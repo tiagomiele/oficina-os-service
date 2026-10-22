@@ -118,29 +118,8 @@ public class TecnicoOficinaController {
     return OrdemServicoResponse.de(service.consultar(numero));
   }
 
-  @Operation(summary = "03.05 - Enviar orçamento para aprovação do cliente")
-  @PostMapping("/{numeroOs}/enviar-para-aprovacao")
-  public OrdemServicoResponse enviarParaAprovacao(
-      @Parameter(name = "numeroOs", description = DESC_NUMERO_OS, example = EXAMPLE_NUMERO_OS)
-          @PathVariable("numeroOs")
-          String numero) {
-    return OrdemServicoResponse.de(service.enviarParaAprovacao(numero));
-  }
-
   @Operation(
-      summary = "03.06 - Concluir reparo (fim da execução)",
-      description =
-          "Transição EM_EXECUCAO → AGUARDANDO_PAGAMENTO. Grava `fim_execucao` na primeira vez.")
-  @PostMapping("/{numeroOs}/concluir-reparo")
-  public OrdemServicoResponse concluirReparo(
-      @Parameter(name = "numeroOs", description = DESC_NUMERO_OS, example = EXAMPLE_NUMERO_OS)
-          @PathVariable("numeroOs")
-          String numero) {
-    return OrdemServicoResponse.de(service.concluirReparo(numero));
-  }
-
-  @Operation(
-      summary = "03.07 - Entregar veículo ao cliente",
+      summary = "03.05 - Entregar veículo ao cliente",
       description =
           "Aceita status PAGA ou CANCELADA. Em CANCELADA apenas registra a entrega sem ação"
               + " financeira.")
@@ -153,7 +132,7 @@ public class TecnicoOficinaController {
   }
 
   @Operation(
-      summary = "03.08 - Cancelar OS em diagnóstico",
+      summary = "03.06 - Cancelar OS em diagnóstico",
       description =
           "Cancela uma OS que esteja em EM_DIAGNOSTICO: cancela todos os orçamentos vinculados,"
               + " devolve as peças reservadas ao estoque e move a OS para CANCELADA.")

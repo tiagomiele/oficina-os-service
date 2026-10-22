@@ -3,6 +3,7 @@ package br.com.oficina.integration;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import br.com.oficina.usecase.saga.TipoMensagemSaga;
 import org.junit.jupiter.api.Test;
 
 class RejeicaoRefazerOsIntegrationTest extends IntegrationTestBase {
@@ -83,25 +84,13 @@ class RejeicaoRefazerOsIntegrationTest extends IntegrationTestBase {
         .then()
         .statusCode(200);
 
-    given()
-        .header("Authorization", "Bearer " + token)
-        .post("/ordens-servico/" + numeroOs + "/enviar-para-aprovacao")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("AGUARDANDO_APROVACAO"));
+    evento(TipoMensagemSaga.DIAGNOSTICO_CONCLUIDO, numeroOs);
+    assertStatus(numeroOs, "AGUARDANDO_APROVACAO");
 
     // Cliente rejeita e pede refazer → EM_DIAGNOSTICO
-    given()
-        .header("Authorization", "Bearer " + tokenCliente(idCliente))
-        .contentType("application/json")
-        .body(
-            """
-            {"motivo":"Muito caro"}
-            """)
-        .post("/ordens-servico/" + numeroOs + "/rejeitar-refazer")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("EM_DIAGNOSTICO"));
+    evento(
+        TipoMensagemSaga.ORCAMENTO_REJEITADO, numeroOs, "acao", "REFAZER", "motivo", "Muito caro");
+    assertStatus(numeroOs, "EM_DIAGNOSTICO");
 
     // Técnico refaz orçamento e envia novamente
     given()
@@ -116,19 +105,11 @@ class RejeicaoRefazerOsIntegrationTest extends IntegrationTestBase {
         .then()
         .statusCode(200);
 
-    given()
-        .header("Authorization", "Bearer " + token)
-        .post("/ordens-servico/" + numeroOs + "/enviar-para-aprovacao")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("AGUARDANDO_APROVACAO"));
+    evento(TipoMensagemSaga.DIAGNOSTICO_CONCLUIDO, numeroOs);
+    assertStatus(numeroOs, "AGUARDANDO_APROVACAO");
 
     // Cliente aprova desta vez
-    given()
-        .header("Authorization", "Bearer " + tokenCliente(idCliente))
-        .post("/ordens-servico/" + numeroOs + "/aprovar")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("EM_EXECUCAO"));
+    evento(TipoMensagemSaga.ORCAMENTO_APROVADO, numeroOs);
+    assertStatus(numeroOs, "EM_EXECUCAO");
   }
 }

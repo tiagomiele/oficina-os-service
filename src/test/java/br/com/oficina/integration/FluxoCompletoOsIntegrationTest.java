@@ -3,6 +3,7 @@ package br.com.oficina.integration;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import br.com.oficina.usecase.saga.TipoMensagemSaga;
 import org.junit.jupiter.api.Test;
 
 class FluxoCompletoOsIntegrationTest extends IntegrationTestBase {
@@ -94,41 +95,20 @@ class FluxoCompletoOsIntegrationTest extends IntegrationTestBase {
         .body("status", equalTo("EM_DIAGNOSTICO"));
 
     // 6. Enviar para aprovação → AGUARDANDO_APROVACAO
-    given()
-        .header("Authorization", "Bearer " + token)
-        .post("/ordens-servico/" + numeroOs + "/enviar-para-aprovacao")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("AGUARDANDO_APROVACAO"));
+    evento(TipoMensagemSaga.DIAGNOSTICO_CONCLUIDO, numeroOs);
+    assertStatus(numeroOs, "AGUARDANDO_APROVACAO");
 
     // 7. Cliente aprova → EM_EXECUCAO
-    given()
-        .header("Authorization", "Bearer " + tokenCliente(idCliente))
-        .post("/ordens-servico/" + numeroOs + "/aprovar")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("EM_EXECUCAO"));
+    evento(TipoMensagemSaga.ORCAMENTO_APROVADO, numeroOs);
+    assertStatus(numeroOs, "EM_EXECUCAO");
 
     // 8. Técnico conclui reparo → AGUARDANDO_PAGAMENTO
-    given()
-        .header("Authorization", "Bearer " + token)
-        .post("/ordens-servico/" + numeroOs + "/concluir-reparo")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("AGUARDANDO_PAGAMENTO"));
+    evento(TipoMensagemSaga.REPARO_CONCLUIDO, numeroOs);
+    assertStatus(numeroOs, "AGUARDANDO_PAGAMENTO");
 
     // 9. Cliente confirma pagamento → PAGA
-    given()
-        .header("Authorization", "Bearer " + tokenCliente(idCliente))
-        .contentType("application/json")
-        .body(
-            """
-            {"comprovante":"PIX-12345"}
-            """)
-        .post("/ordens-servico/" + numeroOs + "/confirmar-pagamento")
-        .then()
-        .statusCode(200)
-        .body("status", equalTo("PAGA"));
+    evento(TipoMensagemSaga.PAGAMENTO_CONFIRMADO, numeroOs, "comprovante", "PIX-12345");
+    assertStatus(numeroOs, "PAGA");
 
     // 10. Técnico entrega → ENTREGUE
     given()

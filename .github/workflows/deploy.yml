@@ -29,6 +29,9 @@ jobs:
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
       APP_DB_URL: ${{ vars.APP_DB_URL }}
       APP_DB_USER: ${{ vars.APP_DB_USER || 'oficina_admin' }}
+      SQS_OS_EVENTOS_URL: ${{ vars.SQS_OS_EVENTOS_URL }}
+      SQS_DIAGNOSTICO_REPARO_COMANDOS_URL: ${{ vars.SQS_DIAGNOSTICO_REPARO_COMANDOS_URL }}
+      SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL: ${{ vars.SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL }}
       SERVERLESS_JWT_ISSUER: ${{ vars.SERVERLESS_JWT_ISSUER || 'oficina-auth-serverless' }}
       SERVERLESS_JWT_AUDIENCE: ${{ vars.SERVERLESS_JWT_AUDIENCE || 'oficina-backend' }}
       NEW_RELIC_ENABLED: ${{ vars.NEW_RELIC_ENABLED || 'false' }}
@@ -72,7 +75,7 @@ jobs:
           for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN APP_DB_PASSWORD APP_JWT_SECRET APP_ADMIN_PASSWORD APP_SERVERLESS_JWT_PUBLIC_KEY TF_API_TOKEN; do
             if [ -z "${!name:-}" ]; then missing+=("$name"); fi
           done
-          for name in EKS_CLUSTER_NAME APP_DB_URL APP_DB_USER AUTH_BASE_URL TF_CLOUD_ORGANIZATION TF_WORKSPACE_AUTH TF_WORKSPACE_OBSERVABILITY; do
+          for name in EKS_CLUSTER_NAME APP_DB_URL APP_DB_USER SQS_OS_EVENTOS_URL SQS_DIAGNOSTICO_REPARO_COMANDOS_URL SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL AUTH_BASE_URL TF_CLOUD_ORGANIZATION TF_WORKSPACE_AUTH TF_WORKSPACE_OBSERVABILITY; do
             if [ -z "${!name:-}" ]; then missing+=("$name"); fi
           done
           if [ -z "$GITHUB_SYNC_TOKEN" ] && { [ -z "$SYNC_APP_CLIENT_ID" ] || [ -z "$SYNC_APP_PRIVATE_KEY" ]; }; then
@@ -163,6 +166,11 @@ jobs:
             --from-literal=NOTIFICATION_ENDPOINT="$NOTIFICATION_ENDPOINT" \
             --from-literal=SERVERLESS_JWT_ISSUER="$SERVERLESS_JWT_ISSUER" \
             --from-literal=SERVERLESS_JWT_AUDIENCE="$SERVERLESS_JWT_AUDIENCE" \
+            --from-literal=MENSAGERIA_TIPO=sqs \
+            --from-literal=AWS_REGION="$AWS_REGION" \
+            --from-literal=SQS_OS_EVENTOS_URL="$SQS_OS_EVENTOS_URL" \
+            --from-literal=SQS_DIAGNOSTICO_REPARO_COMANDOS_URL="$SQS_DIAGNOSTICO_REPARO_COMANDOS_URL" \
+            --from-literal=SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL="$SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL" \
             --from-literal=JAVA_TOOL_OPTIONS=-javaagent:/opt/newrelic/newrelic.jar \
             --from-literal=NEW_RELIC_AGENT_ENABLED="$nr_enabled" \
             --from-literal=NEW_RELIC_APP_NAME="$nr_app_name" \

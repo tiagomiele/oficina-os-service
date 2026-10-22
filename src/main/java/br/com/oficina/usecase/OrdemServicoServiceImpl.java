@@ -15,14 +15,19 @@ import br.com.oficina.domain.model.Servico;
 import br.com.oficina.domain.model.VeiculoId;
 import br.com.oficina.usecase.gateway.ClienteRepository;
 import br.com.oficina.usecase.gateway.HistoricoStatusOrdemServicoRepository;
+import br.com.oficina.usecase.gateway.MensageriaGateway;
 import br.com.oficina.usecase.gateway.NotificacaoGateway;
 import br.com.oficina.usecase.gateway.NumeroOSGenerator;
 import br.com.oficina.usecase.gateway.OrdemServicoRepository;
 import br.com.oficina.usecase.gateway.PecaRepository;
 import br.com.oficina.usecase.gateway.ServicoRepository;
 import br.com.oficina.usecase.gateway.VeiculoRepository;
+import br.com.oficina.usecase.saga.MensagemSaga;
+import br.com.oficina.usecase.saga.TipoMensagemSaga;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +47,7 @@ public class OrdemServicoServiceImpl {
   private final FinanceiroServiceImpl financeiro;
   private final NotificacaoGateway notificacao;
   private final HistoricoStatusOrdemServicoRepository historico;
+  private final MensageriaGateway mensageria;
 
   public OrdemServicoServiceImpl(
       OrdemServicoRepository repo,
@@ -53,7 +59,8 @@ public class OrdemServicoServiceImpl {
       EstoqueServiceImpl estoque,
       FinanceiroServiceImpl financeiro,
       NotificacaoGateway notificacao,
-      HistoricoStatusOrdemServicoRepository historico) {
+      HistoricoStatusOrdemServicoRepository historico,
+      MensageriaGateway mensageria) {
     this.repo = repo;
     this.numerador = numerador;
     this.clientes = clientes;
@@ -64,6 +71,7 @@ public class OrdemServicoServiceImpl {
     this.financeiro = financeiro;
     this.notificacao = notificacao;
     this.historico = historico;
+    this.mensageria = mensageria;
   }
 
   @Transactional
@@ -101,8 +109,16 @@ public class OrdemServicoServiceImpl {
           "VEICULO_NAO_CADASTRADO", "Veículo não cadastrado para o cliente");
     }
     NumeroOS numero = numerador.proximo();
-    OrdemServico os = OrdemServico.abrir(numero, idCliente, placa, descricaoProblema);
-    return repo.salvar(os);
+    OrdemServico os = repo.salvar(OrdemServico.abrir(numero, idCliente, placa, descricaoProblema));
+    mensageria.enviar(
+        MensagemSaga.comando(
+            TipoMensagemSaga.INICIAR_DIAGNOSTICO,
+            numero.valor(),
+            MensagemSaga.dados(
+                "idCliente", idCliente,
+                "placa", placa.valor(),
+                "descricaoProblema", descricaoProblema)));
+    return os;
   }
 
   @Transactional
@@ -136,11 +152,11 @@ public class OrdemServicoServiceImpl {
     OrdemServico os = carregar(numero);
     Dinheiro preco =
         precoUnitarioOverride == null ? p.getPrecoVenda() : Dinheiro.de(precoUnitarioOverride);
-    ItemOrcamento item = os.adicionarPeca(idSku, p.getNome(), quantidade, preco);
-    OrdemServico salvo = repo.salvar(os);
-    estoque.consumoPorOrcamento(
-        idSku, quantidade, numero, item.getIdOrcamento(), item.getIdOrcamentoItem());
-    return salvo;
+    if (estoque.saldo(idSku) < quantidade) {
+      throw new BusinessException("ESTOQUE_INSUFICIENTE", "Estoque insuficiente");
+    }
+    os.adicionarPeca(idSku, p.getNome(), quantidade, preco);
+    return repo.salvar(os);
   }
 
   @Transactional
@@ -156,6 +172,7 @@ public class OrdemServicoServiceImpl {
   public OrdemServico aprovar(String numero) {
     OrdemServico os = carregar(numero);
     os.aprovar();
+    reservarPecas(numero, os);
     OrdemServico salva = repo.salvar(os);
     notificarCliente(salva);
     return salva;
@@ -164,8 +181,7 @@ public class OrdemServicoServiceImpl {
   @Transactional
   public OrdemServico rejeitarCancelar(String numero, String motivo) {
     OrdemServico os = carregar(numero);
-    List<ItemOrcamento> itensCancelados = os.rejeitarCancelar(motivo);
-    devolverPecasAoEstoque(numero, itensCancelados);
+    os.rejeitarCancelar(motivo);
     OrdemServico salva = repo.salvar(os);
     notificarCliente(salva);
     return salva;
@@ -174,8 +190,7 @@ public class OrdemServicoServiceImpl {
   @Transactional
   public OrdemServico rejeitarRefazer(String numero, String motivo) {
     OrdemServico os = carregar(numero);
-    List<ItemOrcamento> itensCancelados = os.rejeitarRefazer(motivo);
-    devolverPecasAoEstoque(numero, itensCancelados);
+    os.rejeitarRefazer(motivo);
     OrdemServico salva = repo.salvar(os);
     notificarCliente(salva);
     return salva;
@@ -213,9 +228,11 @@ public class OrdemServicoServiceImpl {
   @Transactional
   public OrdemServico cancelarEmDiagnostico(String numero, String motivo) {
     OrdemServico os = carregar(numero);
-    List<ItemOrcamento> itensCancelados = os.cancelarEmDiagnostico(motivo);
-    devolverPecasAoEstoque(numero, itensCancelados);
+    os.cancelarEmDiagnostico(motivo);
     OrdemServico salva = repo.salvar(os);
+    mensageria.enviar(
+        MensagemSaga.comando(
+            TipoMensagemSaga.CANCELAR_EXECUCAO, numero, MensagemSaga.dados("motivo", motivo)));
     notificarCliente(salva);
     return salva;
   }
@@ -229,29 +246,27 @@ public class OrdemServicoServiceImpl {
     return salva;
   }
 
-  @Transactional
-  public OrdemServico aprovarDoCliente(String numero, Long idCliente) {
-    exigirProprietario(carregar(numero), idCliente);
-    return aprovar(numero);
+  /** Confere se o saldo atual cobre as peças do orçamento em aprovação (passo da Saga). */
+  @Transactional(readOnly = true)
+  public boolean estoqueSuficiente(String numero) {
+    return pecasDoOrcamentoAtual(carregar(numero)).entrySet().stream()
+        .allMatch(e -> estoque.saldo(e.getKey()) >= e.getValue());
   }
 
-  @Transactional
-  public OrdemServico rejeitarCancelarDoCliente(String numero, String motivo, Long idCliente) {
-    exigirProprietario(carregar(numero), idCliente);
-    return rejeitarCancelar(numero, motivo);
-  }
-
-  @Transactional
-  public OrdemServico rejeitarRefazerDoCliente(String numero, String motivo, Long idCliente) {
-    exigirProprietario(carregar(numero), idCliente);
-    return rejeitarRefazer(numero, motivo);
-  }
-
-  @Transactional
-  public OrdemServico confirmarPagamentoDoCliente(
-      String numero, String comprovante, Long idCliente) {
-    exigirProprietario(carregar(numero), idCliente);
-    return confirmarPagamento(numero, comprovante);
+  /** Compensação de pagamento recusado: a OS segue aguardando pagamento e o cliente é avisado. */
+  @Transactional(readOnly = true)
+  public OrdemServico notificarPagamentoRecusado(String numero, String motivo) {
+    OrdemServico os = carregar(numero);
+    String detalhe = motivo == null || motivo.isBlank() ? "" : " Motivo: " + motivo + ".";
+    notificar(
+        os,
+        "OS " + numero + " — pagamento recusado",
+        "o pagamento da sua Ordem de Serviço "
+            + numero
+            + " foi recusado."
+            + detalhe
+            + " Você pode tentar novamente.");
+    return os;
   }
 
   @Transactional(readOnly = true)
@@ -301,27 +316,30 @@ public class OrdemServicoServiceImpl {
   }
 
   private void notificarCliente(OrdemServico os) {
+    notificar(
+        os,
+        "OS " + os.getNumero().valor() + " — " + os.getStatus(),
+        "sua Ordem de Serviço "
+            + os.getNumero().valor()
+            + " teve o status atualizado para: "
+            + os.getStatus()
+            + ".");
+  }
+
+  private void notificar(OrdemServico os, String assunto, String mensagem) {
     clientes
         .porId(os.getIdCliente())
         .filter(c -> c.getEmail() != null && !c.getEmail().isBlank())
         .ifPresent(
             c ->
                 notificacao.enviar(
-                    c.getEmail(),
-                    "OS " + os.getNumero().valor() + " — " + os.getStatus(),
-                    "Prezado(a) "
-                        + c.getNome()
-                        + ", sua Ordem de Serviço "
-                        + os.getNumero().valor()
-                        + " teve o status atualizado para: "
-                        + os.getStatus()
-                        + "."));
+                    c.getEmail(), assunto, "Prezado(a) " + c.getNome() + ", " + mensagem));
   }
 
-  private void devolverPecasAoEstoque(String numero, List<ItemOrcamento> itens) {
-    for (ItemOrcamento it : itens) {
+  private void reservarPecas(String numero, OrdemServico os) {
+    for (ItemOrcamento it : os.orcamentoAtual().getItens()) {
       if (it.getTipoItem() == TipoItem.PECA) {
-        estoque.devolucaoPorOrcamento(
+        estoque.consumoPorOrcamento(
             it.getIdServicoSku(),
             it.getQuantidade(),
             numero,
@@ -329,5 +347,14 @@ public class OrdemServicoServiceImpl {
             it.getIdOrcamentoItem());
       }
     }
+  }
+
+  private static Map<Long, Integer> pecasDoOrcamentoAtual(OrdemServico os) {
+    return os.orcamentoAtual().getItens().stream()
+        .filter(it -> it.getTipoItem() == TipoItem.PECA)
+        .collect(
+            Collectors.groupingBy(
+                ItemOrcamento::getIdServicoSku,
+                Collectors.summingInt(ItemOrcamento::getQuantidade)));
   }
 }

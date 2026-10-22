@@ -3,6 +3,7 @@ package br.com.oficina.integration;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+import br.com.oficina.usecase.saga.TipoMensagemSaga;
 import org.junit.jupiter.api.Test;
 
 class ListagemAtivasIntegrationTest extends IntegrationTestBase {
@@ -97,16 +98,8 @@ class ListagemAtivasIntegrationTest extends IntegrationTestBase {
             .path("numero");
 
     // Enviar OS2 para aprovação e aprovar
-    given()
-        .header("Authorization", "Bearer " + token)
-        .post("/ordens-servico/" + os2 + "/enviar-para-aprovacao")
-        .then()
-        .statusCode(200);
-    given()
-        .header("Authorization", "Bearer " + tokenCliente(idCliente))
-        .post("/ordens-servico/" + os2 + "/aprovar")
-        .then()
-        .statusCode(200);
+    evento(TipoMensagemSaga.DIAGNOSTICO_CONCLUIDO, os2);
+    evento(TipoMensagemSaga.ORCAMENTO_APROVADO, os2);
 
     // GET /relatorios/os-por-status — OS2 (EM_EXECUCAO) deve vir primeiro
     given()

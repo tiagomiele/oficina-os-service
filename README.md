@@ -2,7 +2,9 @@
 >
 > Serviço de Ordem de Serviço (OS): clientes, veículos, OS, catálogo, estoque, notas fiscais de fornecedor, financeiro, usuários, relatórios e orquestração da Saga.
 >
-> Base importada de [`fiap-tech-challenge-fase3-oficina-backend`](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend) (commit `9623b23`), sem alterações funcionais. A evolução para a Fase 4 é feita por PRs nas próximas fases; o conteúdo abaixo ainda descreve a Fase 3.
+> Base importada de [`fiap-tech-challenge-fase3-oficina-backend`](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend) (commit `9623b23`). O conteúdo abaixo ainda descreve a Fase 3, com as mudanças da Fase 4 listadas aqui.
+>
+> **Saga orquestrada (Fase 4):** o OS Service orquestra a Saga pelo status da OS, envia comandos e consome eventos pelo Amazon SQS, aplica as compensações e garante idempotência por `messageId`. As rotas de enviar para aprovação, concluir reparo, aprovar, rejeitar e confirmar pagamento saíram deste serviço e passaram para Diagnóstico e Reparo e Orçamento e Pagamento. Contrato das mensagens: [`docs/saga/contrato-mensagens.md`](docs/saga/contrato-mensagens.md).
 
 # Oficina Fase 3 — documentação central
 
