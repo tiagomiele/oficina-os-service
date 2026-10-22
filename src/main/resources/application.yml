@@ -105,3 +105,16 @@ oficina:
       api-key: ${NOTIFICATION_API_KEY:}
       connect-timeout: ${NOTIFICATION_CONNECT_TIMEOUT:2s}
       read-timeout: ${NOTIFICATION_READ_TIMEOUT:12s}
+  mensageria:
+    # memoria (default, local/testes) ou sqs (EKS/LocalStack)
+    tipo: ${MENSAGERIA_TIPO:memoria}
+    sqs:
+      region: ${AWS_REGION:us-west-2}
+      # Endpoint customizado só para LocalStack; vazio usa o endpoint da AWS e a LabRole do nó.
+      endpoint: ${AWS_SQS_ENDPOINT:}
+      os-eventos-url: ${SQS_OS_EVENTOS_URL:}
+      diagnostico-reparo-comandos-url: ${SQS_DIAGNOSTICO_REPARO_COMANDOS_URL:}
+      orcamento-pagamento-comandos-url: ${SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL:}
+      wait-time-seconds: ${SQS_WAIT_TIME_SECONDS:20}
+      max-messages: ${SQS_MAX_MESSAGES:10}
+      poll-delay-ms: ${SQS_POLL_DELAY_MS:1000}
