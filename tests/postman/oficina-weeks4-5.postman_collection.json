@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "7647a705-d48f-456e-a88b-a56373eb6bc4",
-    "name": "Oficina Fase 3 - Validacao Geral Semanas 4 e 5",
-    "description": "Fluxo ponta a ponta com dados sinteticos. Nao exporte tokens ou credenciais nos resultados.",
+    "name": "Oficina Fase 4 - Validacao E2E da Saga (homolog/production)",
+    "description": "Fluxo ponta a ponta da Saga entre OS Service, Diagnostico e Reparo e Orcamento e Pagamento, com dados sinteticos. Requer PAYMENT_PROVIDER=fake (usa POST /pagamentos/{n}/simular). Nao exporte tokens ou credenciais nos resultados.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -116,6 +116,22 @@
     {
       "key": "otherToken",
       "value": ""
+    },
+    {
+      "key": "diagnosticoReparoBaseUrl",
+      "value": ""
+    },
+    {
+      "key": "orcamentoPagamentoBaseUrl",
+      "value": ""
+    },
+    {
+      "key": "pollAttempts",
+      "value": ""
+    },
+    {
+      "key": "osCorrelationId",
+      "value": ""
     }
   ],
   "item": [
@@ -172,11 +188,47 @@
               }
             }
           ]
+        },
+        {
+          "name": "Diagnostico e Reparo pronto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{diagnosticoReparoBaseUrl}}/actuator/health/readiness"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('diagnostico e reparo responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Orcamento e Pagamento pronto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{orcamentoPagamentoBaseUrl}}/actuator/health/readiness"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('orcamento e pagamento responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "02 - Preparacao administrativa",
+      "name": "02 - Preparacao e diagnostico pela Saga",
       "item": [
         {
           "name": "Login administrativo",
@@ -423,12 +475,12 @@
               },
               {
                 "key": "X-Request-Id",
-                "value": "postman-os-create-{{$guid}}"
+                "value": "postman-saga-{{runId}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idCliente\": {{ownerClientId}},\n  \"placa\": \"{{vehiclePlate}}\",\n  \"descricaoProblema\": \"Validacao geral das Semanas 4 e 5\"\n}"
+              "raw": "{\n  \"idCliente\": {{ownerClientId}},\n  \"placa\": \"{{vehiclePlate}}\",\n  \"descricaoProblema\": \"Validacao E2E da Saga Fase 4\"\n}"
             },
             "url": "{{backendBaseUrl}}/ordens-servico"
           },
@@ -437,15 +489,103 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS criada em RECEBIDA', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().status).to.equal('RECEBIDA'); });",
-                  "pm.collectionVariables.set('numeroOs', pm.response.json().numero);"
+                  "pm.test('OS criada', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('numeroOs', pm.response.json().numero);",
+                  "pm.collectionVariables.set('osCorrelationId', `postman-saga-${pm.collectionVariables.get('runId')}`);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Adicionar servico e iniciar diagnostico",
+          "name": "Comando INICIAR_DIAGNOSTICO chega ao tecnico",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{technicianToken}}"
+              }
+            ],
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().etapa : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'NA_FILA_DIAGNOSTICO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('execucao na fila de diagnostico', () => pm.expect(current).to.equal('NA_FILA_DIAGNOSTICO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tecnico inicia diagnostico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{technicianToken}}"
+              }
+            ],
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}/iniciar-diagnostico"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('diagnostico iniciado', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OS entra em diagnostico",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'EM_DIAGNOSTICO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('OS em diagnostico', () => pm.expect(current).to.equal('EM_DIAGNOSTICO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adicionar servico na OS",
           "request": {
             "method": "POST",
             "header": [
@@ -469,30 +609,70 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS entrou em diagnostico', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.equal('EM_DIAGNOSTICO'); });"
+                  "pm.test('servico adicionado', () => pm.response.to.have.status(200));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Enviar orcamento para aprovacao",
+          "name": "Tecnico conclui diagnostico",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{technicianToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
-            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}/enviar-para-aprovacao"
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}/concluir-diagnostico",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"diagnostico\": \"Validacao E2E da Saga\"\n}"
+            }
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS aguarda aprovacao', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.equal('AGUARDANDO_APROVACAO'); });"
+                  "pm.test('diagnostico concluido', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OS aguarda aprovacao",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'AGUARDANDO_APROVACAO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('OS aguarda aprovacao', () => pm.expect(current).to.equal('AGUARDANDO_APROVACAO'));",
+                  "}"
                 ]
               }
             }
@@ -690,14 +870,46 @@
               }
             }
           ]
+        },
+        {
+          "name": "Proprietario consulta orcamento pelo API Gateway",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}"
+              }
+            ],
+            "url": "{{apiGatewayBaseUrl}}/orcamentos/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'AGUARDANDO_APROVACAO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('orcamento aguarda aprovacao', () => pm.expect(current).to.equal('AGUARDANDO_APROVACAO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "04 - Fluxo final da ordem de servico",
+      "name": "04 - Orcamento, reparo e pagamento pela Saga",
       "item": [
         {
-          "name": "Proprietario aprova orcamento",
+          "name": "Proprietario aprova orcamento pelo API Gateway",
           "request": {
             "method": "POST",
             "header": [
@@ -706,21 +918,85 @@
                 "value": "Bearer {{ownerToken}}"
               }
             ],
-            "url": "{{apiGatewayBaseUrl}}/ordens-servico/{{numeroOs}}/aprovar"
+            "url": "{{apiGatewayBaseUrl}}/orcamentos/{{numeroOs}}/aprovar"
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS entrou em execucao', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.equal('EM_EXECUCAO'); });"
+                  "pm.test('orcamento aprovado', () => pm.response.to.have.status(200));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Administracao conclui reparo",
+          "name": "OS entra em execucao",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'EM_EXECUCAO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('OS em execucao', () => pm.expect(current).to.equal('EM_EXECUCAO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Comando INICIAR_REPARO chega ao tecnico",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{technicianToken}}"
+              }
+            ],
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().etapa : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'NA_FILA_REPARO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('execucao na fila de reparo', () => pm.expect(current).to.equal('NA_FILA_REPARO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tecnico inicia reparo",
           "request": {
             "method": "POST",
             "header": [
@@ -729,45 +1005,156 @@
                 "value": "Bearer {{technicianToken}}"
               }
             ],
-            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}/concluir-reparo"
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}/iniciar-reparo"
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS aguarda pagamento', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.equal('AGUARDANDO_PAGAMENTO'); });"
+                  "pm.test('reparo iniciado', () => pm.response.to.have.status(200));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Proprietario confirma pagamento",
+          "name": "Tecnico conclui reparo",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{ownerToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "Bearer {{technicianToken}}"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\"comprovante\":\"PIX-SINTETICO-{{runId}}\"}"
-            },
-            "url": "{{apiGatewayBaseUrl}}/ordens-servico/{{numeroOs}}/confirmar-pagamento"
+            "url": "{{diagnosticoReparoBaseUrl}}/execucoes/{{numeroOs}}/concluir-reparo"
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('OS paga', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.equal('PAGA'); });"
+                  "pm.test('reparo concluido', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OS aguarda pagamento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'AGUARDANDO_PAGAMENTO' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('OS aguarda pagamento', () => pm.expect(current).to.equal('AGUARDANDO_PAGAMENTO'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Proprietario consulta pagamento pendente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}"
+              }
+            ],
+            "url": "{{apiGatewayBaseUrl}}/pagamentos/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'PENDENTE' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('pagamento pendente', () => pm.expect(current).to.equal('PENDENTE'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagamento fake aprovado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orcamentoPagamentoBaseUrl}}/pagamentos/{{numeroOs}}/simular?aprovado=true"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('pagamento simulado', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OS paga",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{backendBaseUrl}}/ordens-servico/{{numeroOs}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const attempts = Number(pm.collectionVariables.get('pollAttempts') || 0);",
+                  "const current = pm.response.code === 200 ? pm.response.json().status : `HTTP ${pm.response.code}`;",
+                  "if (current !== 'PAGA' && attempts < 30) {",
+                  "  pm.collectionVariables.set('pollAttempts', attempts + 1);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollAttempts', 0);",
+                  "  pm.test('OS paga', () => pm.expect(current).to.equal('PAGA'));",
+                  "}"
                 ]
               }
             }
@@ -813,11 +1200,12 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('historico registra todo o fluxo', () => {",
+                  "pm.test('historico registra a Saga com o mesmo correlationId', () => {",
                   "  pm.response.to.have.status(200);",
                   "  const history = pm.response.json();",
-                  "  pm.expect(history.map(item => item.status)).to.include.members(['RECEBIDA', 'EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO', 'EM_EXECUCAO', 'AGUARDANDO_PAGAMENTO', 'PAGA', 'ENTREGUE']);",
-                  "  pm.expect(history.every(item => item.correlationId && item.correlationId.length <= 64)).to.be.true;",
+                  "  pm.expect(history.map(item => item.status)).to.include.members(['EM_DIAGNOSTICO', 'AGUARDANDO_APROVACAO', 'EM_EXECUCAO', 'AGUARDANDO_PAGAMENTO', 'PAGA', 'ENTREGUE']);",
+                  "  const saga = history.filter(item => item.status !== 'ENTREGUE');",
+                  "  pm.expect(saga.every(item => item.correlationId === pm.collectionVariables.get('osCorrelationId'))).to.be.true;",
                   "});"
                 ]
               }
