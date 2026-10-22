@@ -1356,11 +1356,22 @@ if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name APP_DB_USER -Value 'oficina_admin'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_ISSUER -Value 'oficina-auth-serverless'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_AUDIENCE -Value 'oficina-backend'
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_ISSUER -Value 'oficina-auth-serverless'
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_AUDIENCE -Value 'oficina-backend'
+        # O deploy do Orçamento e Pagamento envia a URL do LoadBalancer ao workspace do Auth.
+        Set-GitHubSecret -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name TF_API_TOKEN -Value $terraformToken
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name TF_CLOUD_ORGANIZATION -Value $TerraformOrganization
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name TF_WORKSPACE_AUTH -Value $WorkspaceNames.Auth[$targetEnvironment]
     }
 
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_DB_PASSWORD -Value $dbPassword
     Set-GitHubSecret -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $Environment -Name APP_DB_PASSWORD -Value $orcamentoPagamentoDbPassword
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_JWT_SECRET -Value $appJwtSecret
+    # Os 3 serviços validam os mesmos tokens: funcionário/técnico (JWT_SECRET) e cliente (chave pública).
+    foreach ($serviceKey in @('OrcamentoPagamento', 'DiagnosticoReparo')) {
+        Set-GitHubSecret -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name APP_JWT_SECRET -Value $appJwtSecret
+        Set-GitHubSecret -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name SERVERLESS_JWT_PUBLIC_KEY -Value $jwtPublicKey
+    }
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_ADMIN_PASSWORD -Value $adminPassword
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name SERVERLESS_JWT_PUBLIC_KEY -Value $jwtPublicKey
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NOTIFICATION_API_KEY -Value $notificationApiKey
@@ -1464,6 +1475,16 @@ if (-not $SkipGitHub) {
     }
 
     Write-Host "Gate do Backend confirmado: DEPLOY_ENABLED=$persistedDeployEnabled."
+
+    $serviceDeployReady = @{
+        OrcamentoPagamento = $kubernetesReady -and ($null -ne $orcamentoPagamentoJdbcOutput)
+        DiagnosticoReparo  = $kubernetesReady -and ($null -ne $dynamoTableOutput)
+    }
+    foreach ($entry in $serviceDeployReady.GetEnumerator()) {
+        $value = if ($entry.Value) { 'true' } else { 'false' }
+        Set-GitHubVariable -Repository $RepositoryNames[$entry.Key] -EnvironmentName $Environment -Name DEPLOY_ENABLED -Value $value
+        Write-Host "Gate do $($RepositoryNames[$entry.Key]): DEPLOY_ENABLED=$value."
+    }
 }
 if ($backendDeployReady) {
     Write-Host 'Deploy do backend habilitado: outputs de EKS e RDS estão disponíveis.'
@@ -1513,6 +1534,7 @@ if ($null -ne $apiBaseOutput) {
     if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name API_GATEWAY_BASE_URL -Value $apiBaseUrl
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name AUTH_BASE_URL -Value $apiBaseUrl
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $Environment -Name API_GATEWAY_BASE_URL -Value $apiBaseUrl
     }
     $notificationEndpointOutput = Get-TerraformOutput -Outputs $authOutputs -Name notification_endpoint
     if ($null -ne $notificationEndpointOutput -and -not $SkipGitHub) {
