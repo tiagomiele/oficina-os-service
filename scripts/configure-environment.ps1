@@ -4,7 +4,8 @@ param(
     [string]$Environment = 'homolog',
     [string]$RepositoriesRoot,
     [string]$TerraformOrganization = 'oficina-fiap-soat-fase-2',
-    [string]$TerraformProject = 'soat-fase3',
+    [string]$TerraformProject = 'soat-fase4',
+    [string]$SonarOrganization = 'tiagomiele',
     [string]$AwsCredentialsFile,
     [string]$SecretsRoot,
     [string]$NotificationSourceEmail = $env:NOTIFICATION_SOURCE_EMAIL,
@@ -15,6 +16,9 @@ param(
     [switch]$UseAwsAcademyDisposableProductionProfile,
     [switch]$RequireBackendDeployReady,
     [switch]$SkipGitHub,
+    [switch]$SkipBranchProtection,
+    [switch]$ConfigureSonarCloud,
+    [switch]$ConfigureMercadoPago,
     [switch]$ValidateOnly
 )
 
@@ -32,28 +36,45 @@ if ($RequireBackendDeployReady -and $SkipGitHub) {
 }
 
 $RepositoryNames = @{
-    Kubernetes = 'fiap-tech-challenge-fase3-oficina-kubernetes-infra'
-    Database   = 'fiap-tech-challenge-fase3-oficina-database-infra'
-    Backend    = 'fiap-tech-challenge-fase3-oficina-backend'
-    Auth       = 'fiap-tech-challenge-fase3-oficina-auth-serverless'
+    Kubernetes         = 'oficina-kubernetes-infra'
+    Database           = 'oficina-database-infra'
+    Backend            = 'oficina-os-service'
+    Auth               = 'oficina-auth-serverless'
+    OrcamentoPagamento = 'oficina-orcamento-pagamento-service'
+    DiagnosticoReparo  = 'oficina-diagnostico-reparo-service'
+}
+$ServiceRepositoryKeys = @('Backend', 'OrcamentoPagamento', 'DiagnosticoReparo')
+$DatabaseComponents = @('Database', 'DatabaseOrcamentoPagamento', 'DatabaseDiagnosticoReparo')
+$RdsComponents = @('Database', 'DatabaseOrcamentoPagamento')
+$TerraformComponents = @('Kubernetes') + $DatabaseComponents + @('Auth')
+$DatabaseWorkingDirectories = @{
+    Database                   = 'os'
+    DatabaseOrcamentoPagamento = 'orcamento-pagamento'
+    DatabaseDiagnosticoReparo  = 'diagnostico-reparo'
+}
+# Checks do ci.yml (sem filtro de path) exigidos nas regras de proteção da main e da homolog.
+$RequiredStatusChecks = @{
+    Kubernetes         = @('Repository validation', 'Terraform infrastructure', 'Terraform observability', 'Kubernetes add-ons validation')
+    Database           = @('Repository validation', 'Terraform validation', 'Database integration tests', 'Security validation')
+    Auth               = @('Repository validation', 'Java build and tests', 'Terraform validation', 'Security validation')
+    Backend            = @('Repository validation', 'Build, test & coverage', 'SonarCloud', 'SBOM (CycloneDX) + Dependency-Track', 'Security scan')
+    OrcamentoPagamento = @('Repository validation', 'Build, test & coverage', 'SonarCloud', 'SBOM (CycloneDX) + Dependency-Track', 'Security scan')
+    DiagnosticoReparo  = @('Repository validation', 'Build, test & coverage', 'SonarCloud', 'SBOM (CycloneDX) + Dependency-Track', 'Security scan')
 }
 $GitHubOwner = 'tiagomiele'
-$WorkspaceNames = @{
-    Kubernetes = @{
-        homolog    = 'oficina-kubernetes-homolog'
-        production = 'oficina-kubernetes-production'
-    }
-    Database = @{
-        homolog    = 'oficina-database-homolog'
-        production = 'oficina-database-production'
-    }
-    Auth = @{
-        homolog    = 'oficina-auth-homolog'
-        production = 'oficina-auth-production'
-    }
-    NewRelic = @{
-        homolog    = 'oficina-newrelic-homolog'
-        production = 'oficina-newrelic-production'
+# Prefixo fase4: os workspaces da Fase 3 (mesma organização) permanecem intocados.
+$WorkspaceNames = @{}
+foreach ($entry in @{
+    Kubernetes                 = 'kubernetes'
+    Database                   = 'db-os'
+    DatabaseOrcamentoPagamento = 'db-orcamento-pagamento'
+    DatabaseDiagnosticoReparo  = 'db-diagnostico-reparo'
+    Auth                       = 'auth'
+    NewRelic                   = 'newrelic'
+}.GetEnumerator()) {
+    $WorkspaceNames[$entry.Key] = @{
+        homolog    = "oficina-fase4-$($entry.Value)-homolog"
+        production = "oficina-fase4-$($entry.Value)-production"
     }
 }
 
@@ -603,7 +624,7 @@ function Set-AwsVariableSet {
         [Parameter(Mandatory)][hashtable]$Credentials
     )
 
-    $name = 'aws-academy-credentials'
+    $name = 'aws-academy-credentials-fase4'
     $existingSets = @((Invoke-HcpApi -Method GET -Path "organizations/$TerraformOrganization/varsets?page%5Bsize%5D=100" -Context 'consultar Variable Sets').data)
     $matchingSets = @($existingSets | Where-Object { $_.attributes.name -eq $name })
 
@@ -845,6 +866,109 @@ function Set-GitHubSecret {
     Invoke-Gh @('secret', 'set', $Name, '--body', $Value, '--repo', "$GitHubOwner/$Repository", '--env', $EnvironmentName)
 }
 
+function Set-GitHubRepositorySecret {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Value
+    )
+
+    Invoke-Gh @('secret', 'set', $Name, '--body', $Value, '--repo', "$GitHubOwner/$Repository")
+}
+
+function Set-GitHubRepositoryVariable {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Value
+    )
+
+    Invoke-Gh @('variable', 'set', $Name, '--body', $Value, '--repo', "$GitHubOwner/$Repository")
+}
+
+function Set-DatabaseWorkspaceVariables {
+    param([Parameter(Mandatory)][string]$EnvironmentName)
+
+    $repository = $RepositoryNames.Database
+    foreach ($entry in @{
+        OS                  = 'Database'
+        ORCAMENTO_PAGAMENTO = 'DatabaseOrcamentoPagamento'
+        DIAGNOSTICO_REPARO  = 'DatabaseDiagnosticoReparo'
+    }.GetEnumerator()) {
+        foreach ($targetEnvironment in @('homolog', 'production')) {
+            $suffix = $targetEnvironment.ToUpperInvariant()
+            Set-GitHubVariable -Repository $repository -EnvironmentName $EnvironmentName -Name "TF_WORKSPACE_$($entry.Key)_$suffix" -Value $WorkspaceNames[$entry.Value][$targetEnvironment]
+        }
+    }
+}
+
+function New-BranchRulesetPayload {
+    param(
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string[]]$RequiredChecks
+    )
+
+    $githubActionsIntegrationId = 15368
+    [ordered]@{
+        name        = "Proteção $Branch"
+        target      = 'branch'
+        enforcement = 'active'
+        conditions  = @{ ref_name = @{ include = @("refs/heads/$Branch"); exclude = @() } }
+        rules       = @(
+            @{ type = 'deletion' },
+            @{ type = 'non_fast_forward' },
+            @{
+                type       = 'pull_request'
+                parameters = @{
+                    required_approving_review_count   = 0
+                    dismiss_stale_reviews_on_push     = ($Branch -eq 'main')
+                    require_code_owner_review         = $false
+                    require_last_push_approval        = $false
+                    required_review_thread_resolution = $true
+                }
+            },
+            @{
+                type       = 'required_status_checks'
+                parameters = @{
+                    strict_required_status_checks_policy = $true
+                    required_status_checks               = @($RequiredChecks | ForEach-Object {
+                        @{ context = $_; integration_id = $githubActionsIntegrationId }
+                    })
+                }
+            }
+        )
+    }
+}
+
+function Set-GitHubBranchRuleset {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string[]]$RequiredChecks
+    )
+
+    $payload = New-BranchRulesetPayload -Branch $Branch -RequiredChecks $RequiredChecks
+    $rulesetsOutput = @(& gh api "repos/$GitHubOwner/$Repository/rulesets" 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao consultar as regras de proteção de $Repository."
+    }
+    $existing = @(($rulesetsOutput -join [Environment]::NewLine) | ConvertFrom-Json) | Where-Object { $_.name -eq $payload.name } | Select-Object -First 1
+
+    $file = [IO.Path]::GetTempFileName()
+    try {
+        [IO.File]::WriteAllText($file, ($payload | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
+        if ($null -eq $existing) {
+            Invoke-Gh @('api', '--method', 'POST', "repos/$GitHubOwner/$Repository/rulesets", '--input', $file, '--silent')
+        }
+        else {
+            Invoke-Gh @('api', '--method', 'PUT', "repos/$GitHubOwner/$Repository/rulesets/$($existing.id)", '--input', $file, '--silent')
+        }
+    }
+    finally {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Get-HcpTerraformOutputs {
     param([Parameter(Mandatory)][object]$Workspace)
 
@@ -1042,7 +1166,7 @@ $awsWorkspaces = @()
 if ($ValidateOnly) {
     Invoke-HcpApi -Method GET -Path "organizations/$TerraformOrganization" | Out-Null
     $missingWorkspaces = @()
-    foreach ($component in @('Kubernetes', 'Database', 'Auth', 'NewRelic')) {
+    foreach ($component in $TerraformComponents + @('NewRelic')) {
         foreach ($targetEnvironment in @('homolog', 'production')) {
             $workspaceName = $WorkspaceNames[$component][$targetEnvironment]
             if ($null -eq (Get-HcpWorkspace -Name $workspaceName -AllowMissing)) {
@@ -1060,10 +1184,18 @@ if ($ValidateOnly) {
 
 Write-Host 'Sincronizando projeto e workspaces no HCP Terraform...'
 $hcpProject = Initialize-HcpProject
-foreach ($component in @('Kubernetes', 'Database', 'Auth', 'NewRelic')) {
+foreach ($component in $TerraformComponents + @('NewRelic')) {
     foreach ($targetEnvironment in @('homolog', 'production')) {
         $workspaceName = $WorkspaceNames[$component][$targetEnvironment]
-        $workingDirectory = if ($component -eq 'NewRelic') { 'observability/newrelic' } else { '' }
+        $workingDirectory = if ($component -eq 'NewRelic') {
+            'observability/newrelic'
+        }
+        elseif ($DatabaseWorkingDirectories.ContainsKey($component)) {
+            $DatabaseWorkingDirectories[$component]
+        }
+        else {
+            ''
+        }
         $workspace = Initialize-HcpWorkspace -Project $hcpProject -Name $workspaceName -WorkingDirectory $workingDirectory
         $hcpWorkspaces[$workspaceName] = $workspace
         if ($component -ne 'NewRelic') {
@@ -1082,16 +1214,18 @@ foreach ($workspace in $awsWorkspaces) {
 $redundantVariables = @{
     Kubernetes = @('aws_region', 'cluster_version', 'lab_role_arn')
     Database   = @('aws_region', 'db_name', 'db_username', 'db_engine_version', 'db_instance_class', 'multi_az', 'deletion_protection', 'skip_final_snapshot')
+    DatabaseOrcamentoPagamento = @('aws_region', 'db_name', 'db_username', 'db_engine_version', 'db_instance_class', 'multi_az', 'deletion_protection', 'skip_final_snapshot')
+    DatabaseDiagnosticoReparo  = @('aws_region')
     Auth       = @('aws_region', 'lab_role_arn', 'jwt_issuer', 'jwt_audience', 'jwt_ttl_seconds')
 }
-foreach ($component in @('Kubernetes', 'Database', 'Auth')) {
+foreach ($component in $TerraformComponents) {
     foreach ($targetEnvironment in @('homolog', 'production')) {
         $workspace = $hcpWorkspaces[$WorkspaceNames[$component][$targetEnvironment]]
         foreach ($key in $redundantVariables[$component]) {
             Remove-HcpWorkspaceVariable -Workspace $workspace -Key $key
         }
         Set-HcpWorkspaceVariable -Workspace $workspace -Key environment -Value $targetEnvironment
-        if ($component -eq 'Database') {
+        if ($component -in $RdsComponents) {
             $isProduction = $targetEnvironment -eq 'production'
             $hardenedProduction = $isProduction -and -not $UseAwsAcademyDisposableProductionProfile
             $backupRetentionDays = if ($isProduction) { '14' } else { '7' }
@@ -1104,7 +1238,7 @@ foreach ($component in @('Kubernetes', 'Database', 'Auth')) {
             Set-HcpWorkspaceVariable -Workspace $workspace -Key deletion_protection -Value $deletionProtection -Hcl $true
             Set-HcpWorkspaceVariable -Workspace $workspace -Key skip_final_snapshot -Value $skipFinalSnapshot -Hcl $true
             if ($isProduction) {
-                Set-HcpWorkspaceVariable -Workspace $workspace -Key final_snapshot_identifier -Value 'oficina-production-db-final'
+                Set-HcpWorkspaceVariable -Workspace $workspace -Key final_snapshot_identifier -Value "oficina-$($DatabaseWorkingDirectories[$component])-production-db-final"
             }
         }
     }
@@ -1112,6 +1246,11 @@ foreach ($component in @('Kubernetes', 'Database', 'Auth')) {
 
 Write-Host 'Sincronizando secrets permanentes dos workspaces...'
 $dbPassword = Get-StoredSecret -Name 'database-password' -Prompt 'Senha atual do RDS' -GenerateWhenEmpty -Validator {
+    param($candidate)
+
+    Assert-RdsPassword -Password $candidate
+}
+$orcamentoPagamentoDbPassword = Get-StoredSecret -Name 'orcamento-pagamento-database-password' -Prompt 'Senha atual do RDS do Orçamento e Pagamento' -GenerateWhenEmpty -Validator {
     param($candidate)
 
     Assert-RdsPassword -Password $candidate
@@ -1148,7 +1287,10 @@ $jwtPublicKey = Get-Content $publicKeyPath -Raw
 
 $databaseWorkspace = $hcpWorkspaces[$WorkspaceNames.Database[$Environment]]
 $authWorkspace = $hcpWorkspaces[$WorkspaceNames.Auth[$Environment]]
+$orcamentoPagamentoDatabaseWorkspace = $hcpWorkspaces[$WorkspaceNames.DatabaseOrcamentoPagamento[$Environment]]
+$diagnosticoReparoDatabaseWorkspace = $hcpWorkspaces[$WorkspaceNames.DatabaseDiagnosticoReparo[$Environment]]
 Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key db_password -Value $dbPassword -Sensitive $true
+Set-HcpWorkspaceVariable -Workspace $orcamentoPagamentoDatabaseWorkspace -Key db_password -Value $orcamentoPagamentoDbPassword -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key db_user -Value 'oficina_admin' -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key db_password -Value $dbPassword -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key jwt_private_key -Value $jwtPrivateKey -Sensitive $true
@@ -1166,6 +1308,9 @@ if (-not $SkipGitHub) {
         foreach ($component in @('Kubernetes', 'Database', 'Auth')) {
             $repository = $RepositoryNames[$component]
             Initialize-GitHubEnvironment -Repository $repository -Name $planEnvironment
+            if ($component -eq 'Database') {
+                Set-DatabaseWorkspaceVariables -EnvironmentName $planEnvironment
+            }
             Set-GitHubSecret -Repository $repository -EnvironmentName $planEnvironment -Name TF_API_TOKEN -Value $terraformToken
             Set-GitHubVariable -Repository $repository -EnvironmentName $planEnvironment -Name TF_CLOUD_ORGANIZATION -Value $TerraformOrganization
             Set-GitHubVariable -Repository $repository -EnvironmentName $planEnvironment -Name TF_WORKSPACE_HOMOLOG -Value $WorkspaceNames[$component].homolog
@@ -1183,6 +1328,7 @@ if (-not $SkipGitHub) {
             Set-GitHubVariable -Repository $repository -EnvironmentName $targetEnvironment -Name AWS_REGION -Value 'us-west-2'
         }
 
+        Set-DatabaseWorkspaceVariables -EnvironmentName $targetEnvironment
         foreach ($component in @('Kubernetes', 'Database', 'Auth')) {
             $repository = $RepositoryNames[$component]
             Set-GitHubSecret -Repository $repository -EnvironmentName $targetEnvironment -Name TF_API_TOKEN -Value $terraformToken
@@ -1203,13 +1349,17 @@ if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Database -EnvironmentName $targetEnvironment -Name ENABLE_TERRAFORM_APPLY -Value 'true'
         Set-GitHubVariable -Repository $RepositoryNames.Auth -EnvironmentName $targetEnvironment -Name TF_APPLY_ENABLED -Value 'true'
 
-        Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name EKS_CLUSTER_NAME -Value "oficina-$targetEnvironment"
+        foreach ($serviceKey in $ServiceRepositoryKeys) {
+            Set-GitHubVariable -Repository $RepositoryNames[$serviceKey] -EnvironmentName $targetEnvironment -Name EKS_CLUSTER_NAME -Value "oficina-$targetEnvironment"
+        }
+        Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $targetEnvironment -Name APP_DB_USER -Value 'oficina_admin'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name APP_DB_USER -Value 'oficina_admin'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_ISSUER -Value 'oficina-auth-serverless'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name SERVERLESS_JWT_AUDIENCE -Value 'oficina-backend'
     }
 
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_DB_PASSWORD -Value $dbPassword
+    Set-GitHubSecret -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $Environment -Name APP_DB_PASSWORD -Value $orcamentoPagamentoDbPassword
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_JWT_SECRET -Value $appJwtSecret
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_ADMIN_PASSWORD -Value $adminPassword
     Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name SERVERLESS_JWT_PUBLIC_KEY -Value $jwtPublicKey
@@ -1233,6 +1383,9 @@ if ($null -ne $vpcOutput -and $null -ne $privateSubnetsOutput -and $null -ne $ek
     Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key vpc_id -Value $vpcId
     Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key private_subnet_ids -Value (ConvertTo-HclList -Values $privateSubnetIds) -Hcl $true
     Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key allowed_security_group_ids -Value (ConvertTo-HclList -Values @($eksSecurityGroupId)) -Hcl $true
+    Set-HcpWorkspaceVariable -Workspace $orcamentoPagamentoDatabaseWorkspace -Key vpc_id -Value $vpcId
+    Set-HcpWorkspaceVariable -Workspace $orcamentoPagamentoDatabaseWorkspace -Key private_subnet_ids -Value (ConvertTo-HclList -Values $privateSubnetIds) -Hcl $true
+    Set-HcpWorkspaceVariable -Workspace $orcamentoPagamentoDatabaseWorkspace -Key allowed_security_group_ids -Value (ConvertTo-HclList -Values @($eksSecurityGroupId)) -Hcl $true
     Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key private_subnet_ids -Value (ConvertTo-HclList -Values $privateSubnetIds) -Hcl $true
     Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key lambda_security_group_id -Value $eksSecurityGroupId
     $kubernetesReady = $true
@@ -1271,6 +1424,34 @@ if ($null -ne $jdbcOutput) {
 }
 else {
     Write-Warning 'RDS ainda não possui output. Reexecute este mesmo script após o apply do banco.'
+}
+
+$orcamentoPagamentoOutputs = Get-HcpTerraformOutputs -Workspace $orcamentoPagamentoDatabaseWorkspace
+$orcamentoPagamentoJdbcOutput = Get-TerraformOutput -Outputs $orcamentoPagamentoOutputs -Name jdbc_url
+if ($null -ne $orcamentoPagamentoJdbcOutput -and -not $SkipGitHub) {
+    Set-GitHubVariable -Repository $RepositoryNames.OrcamentoPagamento -EnvironmentName $Environment -Name APP_DB_URL -Value ([string]$orcamentoPagamentoJdbcOutput.value)
+}
+$diagnosticoReparoOutputs = Get-HcpTerraformOutputs -Workspace $diagnosticoReparoDatabaseWorkspace
+$dynamoTableOutput = Get-TerraformOutput -Outputs $diagnosticoReparoOutputs -Name table_name
+if ($null -ne $dynamoTableOutput -and -not $SkipGitHub) {
+    Set-GitHubVariable -Repository $RepositoryNames.DiagnosticoReparo -EnvironmentName $Environment -Name DYNAMODB_TABLE_NAME -Value ([string]$dynamoTableOutput.value)
+}
+$queueOutputs = [ordered]@{
+    SQS_OS_EVENTOS_URL                  = $databaseOutputs
+    SQS_ORCAMENTO_PAGAMENTO_COMANDOS_URL = $orcamentoPagamentoOutputs
+    SQS_DIAGNOSTICO_REPARO_COMANDOS_URL  = $diagnosticoReparoOutputs
+}
+foreach ($queue in $queueOutputs.GetEnumerator()) {
+    $queueUrlOutput = Get-TerraformOutput -Outputs $queue.Value -Name queue_url
+    if ($null -eq $queueUrlOutput) {
+        Write-Warning "$($queue.Key) ainda não possui output queue_url. Reexecute este mesmo script após o apply do banco."
+        continue
+    }
+    if (-not $SkipGitHub) {
+        foreach ($serviceKey in $ServiceRepositoryKeys) {
+            Set-GitHubVariable -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name $queue.Key -Value ([string]$queueUrlOutput.value)
+        }
+    }
 }
 
 $backendDeployReady = $kubernetesReady -and $databaseReady
@@ -1370,7 +1551,7 @@ if ($ConfigureNewRelic) {
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key newrelic_api_key -Value $apiKey -Sensitive $true
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key observability_enabled -Value 'true' -Hcl $true
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key cluster_name -Value "oficina-$Environment"
-    Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key apm_application_name -Value "oficina-backend-$Environment"
+    Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key apm_application_name -Value "oficina-os-service-$Environment"
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key kubernetes_namespace -Value "oficina-$Environment"
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key api_gateway_name -Value "oficina-auth-$Environment-http-api"
     Set-HcpWorkspaceVariable -Workspace $newRelicWorkspace -Key lambda_function_names -Value (ConvertTo-HclList -Values @("oficina-auth-$Environment-login", "oficina-auth-$Environment-authorizer", "oficina-auth-$Environment-notification-ingress", "oficina-auth-$Environment-notification-delivery")) -Hcl $true
@@ -1401,9 +1582,40 @@ if ($ConfigureNewRelic) {
             Set-GitHubVariable -Repository $RepositoryNames.Kubernetes -EnvironmentName $Environment -Name HEALTH_CHECK_URL -Value "$backendUrl/actuator/health"
         }
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_ENABLED -Value 'true'
-        Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_APP_NAME -Value "oficina-backend-$Environment"
+        Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_APP_NAME -Value "oficina-os-service-$Environment"
         Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_LICENSE_KEY -Value $licenseKey
     }
+}
+
+if ($ConfigureSonarCloud -and -not $SkipGitHub) {
+    $sonarToken = Get-StoredSecret -Name 'sonarcloud-token' -Prompt 'SonarCloud token' -Directory (Join-Path $SecretsRoot 'shared')
+    foreach ($serviceKey in $ServiceRepositoryKeys) {
+        Set-GitHubRepositorySecret -Repository $RepositoryNames[$serviceKey] -Name SONAR_TOKEN -Value $sonarToken
+        Set-GitHubRepositoryVariable -Repository $RepositoryNames[$serviceKey] -Name SONAR_ORGANIZATION -Value $SonarOrganization
+    }
+    Write-Host 'SonarCloud configurado nos 3 serviços.'
+}
+
+if ($ConfigureMercadoPago -and -not $SkipGitHub) {
+    $mercadoPagoDirectory = Join-Path $SecretsRoot 'shared'
+    $mercadoPagoAccessToken = Get-StoredSecret -Name 'mercadopago-access-token' -Prompt 'Mercado Pago Access Token (sandbox)' -Directory $mercadoPagoDirectory
+    $mercadoPagoPublicKey = Get-StoredSecret -Name 'mercadopago-public-key' -Prompt 'Mercado Pago Public Key (sandbox)' -Directory $mercadoPagoDirectory
+    $mercadoPagoWebhookSecret = Get-StoredSecret -Name 'mercadopago-webhook-secret' -Prompt 'Mercado Pago assinatura secreta do webhook' -Directory $mercadoPagoDirectory
+    $paymentRepository = $RepositoryNames.OrcamentoPagamento
+    Set-GitHubSecret -Repository $paymentRepository -EnvironmentName $Environment -Name MERCADOPAGO_ACCESS_TOKEN -Value $mercadoPagoAccessToken
+    Set-GitHubSecret -Repository $paymentRepository -EnvironmentName $Environment -Name MERCADOPAGO_WEBHOOK_SECRET -Value $mercadoPagoWebhookSecret
+    Set-GitHubVariable -Repository $paymentRepository -EnvironmentName $Environment -Name MERCADOPAGO_PUBLIC_KEY -Value $mercadoPagoPublicKey
+    Set-GitHubVariable -Repository $paymentRepository -EnvironmentName $Environment -Name PAYMENT_PROVIDER -Value 'mercadopago'
+    Write-Host "Mercado Pago configurado no Orçamento e Pagamento ($Environment)."
+}
+
+if (-not $SkipGitHub -and -not $SkipBranchProtection) {
+    foreach ($entry in $RepositoryNames.GetEnumerator()) {
+        foreach ($branch in @('main', 'homolog')) {
+            Set-GitHubBranchRuleset -Repository $entry.Value -Branch $branch -RequiredChecks $RequiredStatusChecks[$entry.Key]
+        }
+    }
+    Write-Host 'Regras de proteção da main e da homolog sincronizadas nos 6 repositórios.'
 }
 
 Write-EnvironmentContext -Values $contextValues -Path $contextPath

@@ -82,6 +82,30 @@ foreach ($backendSynchronizationSetting in @(
     }
 }
 
+foreach ($phase4Setting in @(
+    "[string]`$TerraformProject = 'soat-fase4'",
+    "Backend            = 'oficina-os-service'",
+    "OrcamentoPagamento = 'oficina-orcamento-pagamento-service'",
+    "DiagnosticoReparo  = 'oficina-diagnostico-reparo-service'",
+    'homolog    = "oficina-fase4-$($entry.Value)-homolog"',
+    "DatabaseOrcamentoPagamento = 'orcamento-pagamento'",
+    "DatabaseDiagnosticoReparo  = 'diagnostico-reparo'",
+    '[switch]$ConfigureSonarCloud',
+    '[switch]$ConfigureMercadoPago',
+    '[switch]$SkipBranchProtection',
+    'Set-GitHubBranchRuleset -Repository $entry.Value -Branch $branch',
+    '-Name MERCADOPAGO_ACCESS_TOKEN',
+    '-Name SONAR_TOKEN',
+    "-Name `$queue.Key"
+)) {
+    if (-not $sourceText.Contains($phase4Setting)) {
+        throw "Phase 4 setting not found: $phase4Setting"
+    }
+}
+if ($sourceText -match 'fiap-tech-challenge-fase3|soat-fase3') {
+    throw 'Phase 3 names must not be used by the Phase 4 bootstrap.'
+}
+
 foreach ($legacyEnvironmentSetting in @(
     '$authApplyEnvironment = "$targetEnvironment-apply"'
 )) {
@@ -90,7 +114,7 @@ foreach ($legacyEnvironmentSetting in @(
     }
 }
 
-foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret')) {
+foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret', 'Set-GitHubRepositorySecret', 'New-BranchRulesetPayload')) {
     $functionAst = $ast.FindAll({
         param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -553,7 +577,7 @@ $script:requests = @()
 $script:existingSets = @([pscustomobject]@{
     id         = 'varset-1'
     attributes = [pscustomobject]@{
-        name        = 'aws-academy-credentials'
+        name        = 'aws-academy-credentials-fase4'
         description = 'Credenciais temporárias compartilhadas do AWS Academy. Gerenciado pelo script central.'
         global      = $false
         priority    = $false
@@ -585,7 +609,7 @@ function gh {
     $script:ghCalls += , @($Arguments)
     $global:LASTEXITCODE = 0
 }
-Set-GitHubSecret -Repository fiap-tech-challenge-fase3-oficina-backend -EnvironmentName homolog -Name APP_ADMIN_PASSWORD -Value 'senha-sem-quebra'
+Set-GitHubSecret -Repository oficina-os-service -EnvironmentName homolog -Name APP_ADMIN_PASSWORD -Value 'senha-sem-quebra'
 if ($script:ghCalls.Count -ne 1) {
     throw 'Secret update must call the GitHub CLI once.'
 }
@@ -595,5 +619,43 @@ if ($bodyIndex -lt 0 -or $ghArguments[$bodyIndex + 1] -ne 'senha-sem-quebra') {
     throw 'Secret value must be sent verbatim via --body, never through the pipeline.'
 }
 Remove-Item Function:\gh
+
+$GitHubOwner = 'tiagomiele'
+$script:ghCalls = @()
+function gh {
+    $script:ghCalls += ,@($args)
+    $global:LASTEXITCODE = 0
+}
+Set-GitHubRepositorySecret -Repository oficina-os-service -Name SONAR_TOKEN -Value 'token-sem-quebra'
+$repositorySecretArguments = @($script:ghCalls[0])
+if ($repositorySecretArguments -contains '--env' -or $repositorySecretArguments[[Array]::IndexOf($repositorySecretArguments, '--body') + 1] -ne 'token-sem-quebra') {
+    throw 'Repository secrets must be stored at repository level with the exact value.'
+}
+Remove-Item Function:\gh
+
+$mainRuleset = New-BranchRulesetPayload -Branch main -RequiredChecks @('Repository validation', 'SonarCloud')
+$homologRuleset = New-BranchRulesetPayload -Branch homolog -RequiredChecks @('Repository validation')
+if ($mainRuleset.name -ne 'Proteção main' -or $mainRuleset.conditions.ref_name.include[0] -ne 'refs/heads/main') {
+    throw 'Main ruleset must target refs/heads/main.'
+}
+$ruleTypes = @($mainRuleset.rules | ForEach-Object { $_.type })
+foreach ($ruleType in @('deletion', 'non_fast_forward', 'pull_request', 'required_status_checks')) {
+    if ($ruleTypes -notcontains $ruleType) {
+        throw "Ruleset rule not found: $ruleType"
+    }
+}
+$mainChecks = ($mainRuleset.rules | Where-Object type -eq 'required_status_checks').parameters.required_status_checks
+if (@($mainChecks).Count -ne 2 -or $mainChecks[1].context -ne 'SonarCloud' -or $mainChecks[1].integration_id -ne 15368) {
+    throw 'Required status checks must use the GitHub Actions integration.'
+}
+$mainPullRequest = ($mainRuleset.rules | Where-Object type -eq 'pull_request').parameters
+$homologPullRequest = ($homologRuleset.rules | Where-Object type -eq 'pull_request').parameters
+if ($mainPullRequest.dismiss_stale_reviews_on_push -ne $true -or $homologPullRequest.dismiss_stale_reviews_on_push -ne $false) {
+    throw 'Only main must dismiss stale reviews on push.'
+}
+$serializedChecks = @(((New-BranchRulesetPayload -Branch homolog -RequiredChecks @('Repository validation')) | ConvertTo-Json -Depth 10 | ConvertFrom-Json).rules | Where-Object type -eq 'required_status_checks')
+if (@($serializedChecks[0].parameters.required_status_checks).Count -ne 1) {
+    throw 'A single required check must serialize as a JSON array.'
+}
 
 Write-Host 'Environment automation tests passed.'
