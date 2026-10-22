@@ -96,13 +96,16 @@ foreach ($phase4Setting in @(
     'Set-GitHubBranchRuleset -Repository $entry.Value -Branch $branch',
     '-Name MERCADOPAGO_ACCESS_TOKEN',
     '-Name SONAR_TOKEN',
+    '-Name GITHUB_SYNC_TOKEN',
+    "Get-StoredSecret -Name 'github-sync-token'",
+    "foreach (`$serviceKey in @('OrcamentoPagamento', 'DiagnosticoReparo'))",
     "-Name `$queue.Key"
 )) {
     if (-not $sourceText.Contains($phase4Setting)) {
         throw "Phase 4 setting not found: $phase4Setting"
     }
 }
-if ($sourceText -match 'fiap-tech-challenge-fase3|soat-fase3') {
+if ($sourceText -match 'fiap-tech-challenge-fase3|soat-fase3|SYNC_APP_CLIENT_ID|SYNC_APP_PRIVATE_KEY') {
     throw 'Phase 3 names must not be used by the Phase 4 bootstrap.'
 }
 

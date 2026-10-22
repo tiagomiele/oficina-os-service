@@ -1553,7 +1553,9 @@ if ($DisableObservability) {
     Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key rds_newrelic_telemetry_enabled -Value 'false' -Hcl $true
     if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Kubernetes -EnvironmentName $Environment -Name SYNTHETIC_MONITOR_ENABLED -Value 'false'
-        Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_ENABLED -Value 'false'
+        foreach ($serviceKey in $ServiceRepositoryKeys) {
+            Set-GitHubVariable -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name NEW_RELIC_ENABLED -Value 'false'
+        }
     }
 }
 
@@ -1606,7 +1608,21 @@ if ($ConfigureNewRelic) {
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_ENABLED -Value 'true'
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_APP_NAME -Value "oficina-os-service-$Environment"
         Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name NEW_RELIC_LICENSE_KEY -Value $licenseKey
+        foreach ($serviceKey in @('OrcamentoPagamento', 'DiagnosticoReparo')) {
+            Set-GitHubVariable -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name NEW_RELIC_ENABLED -Value 'true'
+            Set-GitHubSecret -Repository $RepositoryNames[$serviceKey] -EnvironmentName $Environment -Name NEW_RELIC_LICENSE_KEY -Value $licenseKey
+        }
     }
+}
+
+# Os deploys do OS, do Auth e do OS-database gravam outputs nos GitHub Environments de outros repos.
+# Fase 4 usa um token fine-grained (Environments: Read and write nos 6 repos), sem a GitHub App da Fase 3.
+if (-not $SkipGitHub) {
+    $githubSyncToken = Get-StoredSecret -Name 'github-sync-token' -Prompt 'GitHub fine-grained token de sincronização (Environments: Read and write nos 6 repos da Fase 4)' -Directory (Join-Path $SecretsRoot 'shared')
+    foreach ($syncSourceKey in @('Backend', 'Auth', 'Database')) {
+        Set-GitHubRepositorySecret -Repository $RepositoryNames[$syncSourceKey] -Name GITHUB_SYNC_TOKEN -Value $githubSyncToken
+    }
+    Write-Host 'GITHUB_SYNC_TOKEN configurado no OS Service, no Auth e no Database.'
 }
 
 if ($ConfigureSonarCloud -and -not $SkipGitHub) {
