@@ -5,6 +5,7 @@ param(
     [string]$RepositoriesRoot,
     [string]$TerraformOrganization = 'oficina-fiap-soat-fase-2',
     [string]$TerraformProject = 'soat-fase4',
+    [string]$TerraformProjectId = 'prj-DTmQK73Lioz8zHBm',
     [string]$SonarOrganization = 'tiagomiele',
     [string]$AwsCredentialsFile,
     [string]$SecretsRoot,
@@ -260,30 +261,14 @@ function Get-StoredSecret {
     $value
 }
 
+# Fase 4 usa credencial própria do projeto soat-fase4 (Team API token), separada do terraform login da Fase 3.
 function Get-TerraformToken {
-    if (-not [string]::IsNullOrWhiteSpace($env:TFC_TOKEN)) {
-        return $env:TFC_TOKEN
+    Get-StoredSecret -Name 'hcp-terraform-token-fase4' -Prompt "HCP Terraform Team API token com acesso Admin somente ao projeto $TerraformProject" -Directory (Join-Path $SecretsRoot 'shared') -Validator {
+        param($candidate)
+
+        $script:HcpHeaders = @{ Authorization = "Bearer $candidate" }
+        $script:HcpProject = Get-HcpProject
     }
-
-    $paths = @()
-    if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
-        $paths += Join-Path $env:APPDATA 'terraform.d\credentials.tfrc.json'
-    }
-    $paths += Join-Path $HOME '.terraform.d/credentials.tfrc.json'
-
-    foreach ($path in $paths | Select-Object -Unique) {
-        if (-not (Test-Path $path)) {
-            continue
-        }
-
-        $credentials = Get-Content $path -Raw | ConvertFrom-Json
-        $hostCredentials = $credentials.credentials.'app.terraform.io'
-        if ($null -ne $hostCredentials -and -not [string]::IsNullOrWhiteSpace($hostCredentials.token)) {
-            return $hostCredentials.token
-        }
-    }
-
-    throw 'Token do HCP Terraform não encontrado. Execute terraform login uma única vez.'
 }
 
 function Get-HcpApiStatusCode {
@@ -397,26 +382,15 @@ function Invoke-HcpApi {
 }
 
 function Get-HcpProject {
-    $projects = @((Invoke-HcpApi -Method GET -Path "organizations/$TerraformOrganization/projects?page%5Bsize%5D=100" -Context 'consultar projetos').data)
-    $projects | Where-Object { $_.attributes.name -eq $TerraformProject } | Select-Object -First 1
-}
-
-function Initialize-HcpProject {
-    $project = Get-HcpProject
-    if ($null -ne $project) {
-        return $project
+    $project = (Invoke-HcpApi -Method GET -Path "projects/$TerraformProjectId" -Context "consultar o projeto $TerraformProject ($TerraformProjectId)").data
+    if ([string]$project.attributes.name -ne $TerraformProject) {
+        throw "O projeto $TerraformProjectId se chama '$($project.attributes.name)', esperado '$TerraformProject'."
     }
-
-    $body = @{
-        data = @{
-            type       = 'projects'
-            attributes = @{
-                name                     = $TerraformProject
-                'default-execution-mode' = 'remote'
-            }
-        }
+    $organization = [string]$project.relationships.organization.data.id
+    if ($organization -ne $TerraformOrganization) {
+        throw "O projeto $TerraformProject pertence à organização '$organization', esperado '$TerraformOrganization'."
     }
-    (Invoke-HcpApi -Method POST -Path "organizations/$TerraformOrganization/projects" -Body $body -Context "criar o projeto $TerraformProject").data
+    $project
 }
 
 function Get-HcpWorkspace {
@@ -444,6 +418,9 @@ function Initialize-HcpWorkspace {
     )
 
     $workspace = Get-HcpWorkspace -Name $Name -AllowMissing
+    if ($null -ne $workspace -and [string]$workspace.relationships.project.data.id -ne [string]$Project.id) {
+        throw "O workspace $Name pertence a outro projeto ($($workspace.relationships.project.data.id)). A Fase 4 só usa workspaces do projeto $TerraformProject."
+    }
     $desiredAttributes = @{
         'execution-mode'    = 'remote'
         'auto-apply'        = $false
@@ -473,25 +450,17 @@ function Initialize-HcpWorkspace {
     if ([string]$workspace.attributes.'working-directory' -ne $WorkingDirectory) {
         $changedAttributes['working-directory'] = $WorkingDirectory
     }
-    $currentProjectId = [string]$workspace.relationships.project.data.id
-    $projectChanged = $currentProjectId -ne [string]$Project.id
-    if ($changedAttributes.Count -eq 0 -and -not $projectChanged) {
+    if ($changedAttributes.Count -eq 0) {
         return $workspace
     }
 
-    $data = @{
-        type = 'workspaces'
-        id   = $workspace.id
-    }
-    if ($changedAttributes.Count -gt 0) {
-        $data.attributes = $changedAttributes
-    }
-    if ($projectChanged) {
-        $data.relationships = @{
-            project = @{ data = @{ type = 'projects'; id = $Project.id } }
+    $body = @{
+        data = @{
+            type       = 'workspaces'
+            id         = $workspace.id
+            attributes = $changedAttributes
         }
     }
-    $body = @{ data = $data }
     (Invoke-HcpApi -Method PATCH -Path "workspaces/$($workspace.id)" -Body $body -Context "atualizar o workspace $Name").data
 }
 
@@ -620,17 +589,16 @@ function Set-HcpVariableSetVariables {
 
 function Set-AwsVariableSet {
     param(
-        [Parameter(Mandatory)][object[]]$Workspaces,
+        [Parameter(Mandatory)][object]$Project,
         [Parameter(Mandatory)][hashtable]$Credentials
     )
 
+    # Variable Set do próprio projeto, aplicado ao projeto: não depende de permissão na organização.
     $name = 'aws-academy-credentials-fase4'
-    $existingSets = @((Invoke-HcpApi -Method GET -Path "organizations/$TerraformOrganization/varsets?page%5Bsize%5D=100" -Context 'consultar Variable Sets').data)
+    $existingSets = @((Invoke-HcpApi -Method GET -Path "projects/$($Project.id)/varsets?page%5Bsize%5D=100" -Context 'consultar Variable Sets do projeto').data)
     $matchingSets = @($existingSets | Where-Object { $_.attributes.name -eq $name })
 
-    $workspaceRelationships = @($Workspaces | ForEach-Object {
-        @{ type = 'workspaces'; id = $_.id }
-    })
+    $projectRelationships = @(@{ type = 'projects'; id = $Project.id })
     $variables = @(
         @{
             type       = 'vars'
@@ -674,8 +642,8 @@ function Set-AwsVariableSet {
                 priority    = $false
             }
             relationships = @{
-                workspaces = @{ data = $workspaceRelationships }
-                vars       = @{ data = $variables }
+                projects = @{ data = $projectRelationships }
+                vars     = @{ data = $variables }
             }
         }
     }
@@ -683,8 +651,8 @@ function Set-AwsVariableSet {
     if ($matchingSets.Count -eq 0) {
         $payload.data.relationships.parent = @{
             data = @{
-                type = 'organizations'
-                id   = $TerraformOrganization
+                type = 'projects'
+                id   = $Project.id
             }
         }
         Invoke-HcpApi -Method POST -Path "organizations/$TerraformOrganization/varsets" -Body $payload -Context 'criar o Variable Set AWS' | Out-Null
@@ -712,8 +680,8 @@ function Set-AwsVariableSet {
         }
         Invoke-HcpApi -Method PATCH -Path "varsets/$($primarySet.id)" -Body $metadataPayload -Context 'atualizar os metadados do Variable Set AWS' | Out-Null
     }
-    $workspacePayload = @{ data = $workspaceRelationships }
-    Invoke-HcpApi -Method POST -Path "varsets/$($primarySet.id)/relationships/workspaces" -Body $workspacePayload -Context 'associar o Variable Set AWS aos workspaces' | Out-Null
+    $projectPayload = @{ data = $projectRelationships }
+    Invoke-HcpApi -Method POST -Path "varsets/$($primarySet.id)/relationships/projects" -Body $projectPayload -Context "associar o Variable Set AWS ao projeto $TerraformProject" | Out-Null
     Set-HcpVariableSetVariables -VariableSetId $primarySet.id -Definitions $variables
     foreach ($duplicateSet in $matchingSets | Select-Object -Skip 1) {
         Invoke-HcpApi -Method DELETE -Path "varsets/$($duplicateSet.id)" -Context 'remover Variable Set AWS duplicado' | Out-Null
@@ -1163,8 +1131,8 @@ $script:HcpHeaders = @{ Authorization = "Bearer $terraformToken" }
 
 $hcpWorkspaces = @{}
 $awsWorkspaces = @()
+Write-Host "HCP Terraform validado: projeto $TerraformProject ($TerraformProjectId) acessível."
 if ($ValidateOnly) {
-    Invoke-HcpApi -Method GET -Path "organizations/$TerraformOrganization" | Out-Null
     $missingWorkspaces = @()
     foreach ($component in $TerraformComponents + @('NewRelic')) {
         foreach ($targetEnvironment in @('homolog', 'production')) {
@@ -1177,13 +1145,13 @@ if ($ValidateOnly) {
     if ($missingWorkspaces.Count -gt 0) {
         Write-Warning "Workspaces que serão criados na execução efetiva: $($missingWorkspaces -join ', ')"
     }
-    Write-Host "Validação concluída para ${Environment}: ferramentas, repositórios, AWS STS, organização HCP Terraform e GitHub CLI estão acessíveis."
+    Write-Host "Validação concluída para ${Environment}: ferramentas, repositórios, AWS STS, projeto HCP Terraform e GitHub CLI estão acessíveis."
     Write-Host 'Nenhum arquivo de credencial, Variable Set, workspace ou GitHub Environment foi alterado.'
     return
 }
 
 Write-Host 'Sincronizando projeto e workspaces no HCP Terraform...'
-$hcpProject = Initialize-HcpProject
+$hcpProject = $script:HcpProject
 foreach ($component in $TerraformComponents + @('NewRelic')) {
     foreach ($targetEnvironment in @('homolog', 'production')) {
         $workspaceName = $WorkspaceNames[$component][$targetEnvironment]
@@ -1204,7 +1172,7 @@ foreach ($component in $TerraformComponents + @('NewRelic')) {
     }
 }
 Write-Host 'Sincronizando credenciais temporárias no Variable Set compartilhado...'
-Set-AwsVariableSet -Workspaces $awsWorkspaces -Credentials $credentials
+Set-AwsVariableSet -Project $hcpProject -Credentials $credentials
 foreach ($workspace in $awsWorkspaces) {
     foreach ($key in @('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN')) {
         Remove-HcpWorkspaceVariable -Workspace $workspace -Key $key -Category env
