@@ -122,7 +122,7 @@ foreach ($legacyEnvironmentSetting in @(
     }
 }
 
-foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Get-HcpProject', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret', 'Set-GitHubRepositorySecret', 'New-BranchRulesetPayload')) {
+foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Get-HcpProject', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret', 'Set-GitHubRepositorySecret', 'New-BranchRulesetPayload', 'Set-GitHubBranchRuleset')) {
     $functionAst = $ast.FindAll({
         param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -700,6 +700,35 @@ $global:LASTEXITCODE = 0
 if ($sourceText -match "-Name\s+'?GITHUB_") {
     throw 'GitHub rejects secret names starting with GITHUB_.'
 }
+
+# Simula o Windows PowerShell 5.1, que não enumera o array devolvido pelo ConvertFrom-Json.
+function ConvertFrom-Json {
+    param([Parameter(ValueFromPipeline = $true)][string]$InputObject)
+    process { Write-Output -NoEnumerate (Microsoft.PowerShell.Utility\ConvertFrom-Json $InputObject -NoEnumerate) }
+}
+foreach ($rulesetCase in @(
+    @{ Response = '[]'; Expected = 'POST' },
+    @{ Response = '[{"id":7,"name":"Proteção homolog"}]'; Expected = 'PUT' }
+)) {
+    $script:rulesetResponse = $rulesetCase.Response
+    $script:ghCalls = @()
+    function gh {
+        $script:ghCalls += , @($args)
+        $global:LASTEXITCODE = 0
+        if ($args.Count -eq 2 -and $args[0] -eq 'api') { $script:rulesetResponse }
+    }
+    Set-GitHubBranchRuleset -Repository oficina-os-service -Branch homolog -RequiredChecks @('Repository validation')
+    $writeCall = @($script:ghCalls[1])
+    if ($writeCall -notcontains $rulesetCase.Expected) {
+        throw "Ruleset sync must use $($rulesetCase.Expected) when the API returns $($rulesetCase.Response)."
+    }
+    if ($rulesetCase.Expected -eq 'PUT' -and ($writeCall -join ' ') -notlike '*rulesets/7*') {
+        throw 'Existing ruleset must be updated by id.'
+    }
+    Remove-Item Function:\gh
+}
+Remove-Item Function:\ConvertFrom-Json
+$global:LASTEXITCODE = 0
 
 $mainRuleset = New-BranchRulesetPayload -Branch main -RequiredChecks @('Repository validation', 'SonarCloud')
 $homologRuleset = New-BranchRulesetPayload -Branch homolog -RequiredChecks @('Repository validation')
