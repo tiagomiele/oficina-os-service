@@ -696,6 +696,7 @@ catch {
     }
 }
 Remove-Item Function:\gh
+$global:LASTEXITCODE = 0
 if ($sourceText -match "-Name\s+'?GITHUB_") {
     throw 'GitHub rejects secret names starting with GITHUB_.'
 }
