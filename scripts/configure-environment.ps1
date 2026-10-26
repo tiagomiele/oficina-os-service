@@ -926,7 +926,9 @@ function Set-GitHubBranchRuleset {
     if ($LASTEXITCODE -ne 0) {
         throw "Falha ao consultar as regras de proteção de $Repository."
     }
-    $existing = @(($rulesetsOutput -join [Environment]::NewLine) | ConvertFrom-Json) | Where-Object { $_.name -eq $payload.name } | Select-Object -First 1
+    # No Windows PowerShell 5.1 o ConvertFrom-Json devolve o array JSON como um único objeto; a atribuição desembrulha.
+    $rulesets = ($rulesetsOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    $existing = @($rulesets) | Where-Object { $_.name -eq $payload.name } | Select-Object -First 1
 
     $file = [IO.Path]::GetTempFileName()
     try {
