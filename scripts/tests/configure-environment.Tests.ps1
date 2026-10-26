@@ -261,6 +261,16 @@ catch {
 }
 Remove-Item Function:\Invoke-RestMethod
 
+function Invoke-RestMethod {
+    param($Method, $Uri, $Headers, $ContentType, $Body, $ErrorAction)
+    $script:capturedHcpBody = $Body
+}
+Invoke-HcpApi -Method POST -Path organizations/org/varsets -Body @{ data = @{ attributes = @{ description = 'Credenciais temporárias' } } } -Context 'teste de acentos'
+if ($script:capturedHcpBody -isnot [byte[]] -or [Text.Encoding]::UTF8.GetString($script:capturedHcpBody) -notlike '*temporárias*') {
+    throw 'HCP API body must be sent as UTF-8 bytes (Windows PowerShell 5.1 sends strings as ISO-8859-1).'
+}
+Remove-Item Function:\Invoke-RestMethod
+
 $script:newRelicLayersResponse = [pscustomobject]@{
     Layers = @(
         [pscustomobject]@{

@@ -361,7 +361,8 @@ function Invoke-HcpApi {
         ErrorAction = 'Stop'
     }
     if ($null -ne $Body) {
-        $parameters.Body = $Body | ConvertTo-Json -Depth 20 -Compress
+        # Bytes UTF-8: o Windows PowerShell 5.1 envia corpo string em ISO-8859-1 e o HCP rejeita acentos com HTTP 400.
+        $parameters.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 20 -Compress))
     }
 
     try {
