@@ -84,6 +84,8 @@ foreach ($backendSynchronizationSetting in @(
 
 foreach ($phase4Setting in @(
     "[string]`$TerraformProject = 'soat-fase4'",
+    "[string]`$TerraformProjectId = 'prj-DTmQK73Lioz8zHBm'",
+    "Get-StoredSecret -Name 'hcp-terraform-token-fase4'",
     "Backend            = 'oficina-os-service'",
     "OrcamentoPagamento = 'oficina-orcamento-pagamento-service'",
     "DiagnosticoReparo  = 'oficina-diagnostico-reparo-service'",
@@ -105,6 +107,9 @@ foreach ($phase4Setting in @(
         throw "Phase 4 setting not found: $phase4Setting"
     }
 }
+if ($sourceText -match 'credentials\.tfrc\.json|TFC_TOKEN|organizations/\$TerraformOrganization/projects|organizations/\$TerraformOrganization/varsets\?|-Path "organizations/\$TerraformOrganization"\s') {
+    throw 'Phase 4 bootstrap must use only the soat-fase4 project credential and project-scoped APIs.'
+}
 if ($sourceText -match 'fiap-tech-challenge-fase3|soat-fase3|SYNC_APP_CLIENT_ID|SYNC_APP_PRIVATE_KEY') {
     throw 'Phase 3 names must not be used by the Phase 4 bootstrap.'
 }
@@ -117,7 +122,7 @@ foreach ($legacyEnvironmentSetting in @(
     }
 }
 
-foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret', 'Set-GitHubRepositorySecret', 'New-BranchRulesetPayload')) {
+foreach ($name in @('Assert-TerraformPlatform', 'Assert-RdsPassword', 'Assert-NotificationSourceEmail', 'ConvertFrom-SecureText', 'New-RandomSecret', 'Get-StoredSecret', 'Get-HcpApiStatusCode', 'Get-HcpApiErrorDetail', 'Invoke-HcpApi', 'Get-HcpProject', 'Initialize-HcpWorkspace', 'Set-HcpWorkspaceVariable', 'Set-HcpVariableSetVariables', 'Set-AwsVariableSet', 'Set-LocalAwsCredentials', 'Get-HcpTerraformOutputs', 'ConvertTo-HclList', 'Get-TerraformOutput', 'Get-KubernetesBackendUrl', 'Get-NewRelicLayerVersion', 'Invoke-Gh', 'Get-GitHubVariable', 'Set-GitHubSecret', 'Set-GitHubRepositorySecret', 'New-BranchRulesetPayload')) {
     $functionAst = $ast.FindAll({
         param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
@@ -458,8 +463,11 @@ function Invoke-HcpApi {
     param([string]$Method, [string]$Path, [object]$Body, [string]$Context)
 
     if ($Method -eq 'GET') {
-        if ($Path -like 'organizations/*/varsets*') {
+        if ($Path -like 'projects/*/varsets*') {
             return @{ data = $script:existingSets }
+        }
+        if ($Path -like 'projects/*') {
+            return @{ data = $script:projectResponse }
         }
         return @{ data = $script:existingVariables }
     }
@@ -541,6 +549,24 @@ if (@($script:requests | Where-Object Method -eq PATCH).Count -ne 0) {
     throw 'Changed-sensitivity Variable Set variable must not be patched.'
 }
 
+$TerraformProject = 'soat-fase4'
+$TerraformProjectId = 'prj-1'
+$TerraformOrganization = 'org-fase4'
+$script:projectResponse = [pscustomobject]@{
+    id            = 'prj-1'
+    attributes    = [pscustomobject]@{ name = 'soat-fase4' }
+    relationships = [pscustomobject]@{ organization = [pscustomobject]@{ data = [pscustomobject]@{ id = 'org-fase4' } } }
+}
+if ((Get-HcpProject).id -ne 'prj-1') {
+    throw 'Phase 4 project must be read by id.'
+}
+$script:projectResponse.attributes.name = 'outro-projeto'
+$wrongProjectRejected = $false
+try { Get-HcpProject | Out-Null } catch { $wrongProjectRejected = $true }
+if (-not $wrongProjectRejected) {
+    throw 'A project with another name must be rejected.'
+}
+
 $script:existingWorkspace = [pscustomobject]@{
     id            = 'ws-existing'
     attributes    = [pscustomobject]@{
@@ -573,7 +599,13 @@ if ($null -eq $workspacePatch -or $workspacePatch.Body.data.attributes.Count -ne
     throw 'Workspace PATCH must contain only changed attributes.'
 }
 if ($workspacePatch.Body.data.ContainsKey('relationships')) {
-    throw 'Unchanged project relationship must not be sent in workspace PATCH.'
+    throw 'Workspace PATCH must never move a workspace between projects.'
+}
+$script:existingWorkspace.relationships.project.data.id = 'prj-fase3'
+$foreignWorkspaceRejected = $false
+try { Initialize-HcpWorkspace -Project $project -Name existing-workspace | Out-Null } catch { $foreignWorkspaceRejected = $true }
+if (-not $foreignWorkspaceRejected) {
+    throw 'A workspace from another project must not be reused.'
 }
 
 $script:requests = @()
@@ -591,13 +623,20 @@ $script:existingVariables = @(
     [pscustomobject]@{ id = 'secret'; attributes = [pscustomobject]@{ key = 'AWS_SECRET_ACCESS_KEY'; category = 'env'; sensitive = $true } },
     [pscustomobject]@{ id = 'session'; attributes = [pscustomobject]@{ key = 'AWS_SESSION_TOKEN'; category = 'env'; sensitive = $true } }
 )
-Set-AwsVariableSet -Workspaces @($workspace) -Credentials $testCredentials
-$associationRequest = $script:requests | Where-Object Path -eq 'varsets/varset-1/relationships/workspaces'
+Set-AwsVariableSet -Project $project -Credentials $testCredentials
+$associationRequest = $script:requests | Where-Object Path -eq 'varsets/varset-1/relationships/projects'
 if ($null -eq $associationRequest -or $associationRequest.Method -ne 'POST') {
-    throw 'Existing Variable Set must use the workspace relationship endpoint.'
+    throw 'Existing Variable Set must use the project relationship endpoint.'
 }
-if (@($associationRequest.Body.data).Count -ne 1 -or $associationRequest.Body.data[0].id -ne 'ws-1' -or $associationRequest.Body.data[0].type -ne 'workspaces') {
-    throw 'Variable Set workspace relationship payload is invalid.'
+if (@($associationRequest.Body.data).Count -ne 1 -or $associationRequest.Body.data[0].id -ne 'prj-1' -or $associationRequest.Body.data[0].type -ne 'projects') {
+    throw 'Variable Set project relationship payload is invalid.'
+}
+$script:requests = @()
+$script:existingSets = @()
+Set-AwsVariableSet -Project $project -Credentials $testCredentials
+$createRequest = $script:requests | Where-Object { $_.Method -eq 'POST' -and $_.Path -like 'organizations/*/varsets' }
+if ($null -eq $createRequest -or $createRequest.Body.data.relationships.parent.data.type -ne 'projects' -or $createRequest.Body.data.relationships.parent.data.id -ne 'prj-1') {
+    throw 'New Variable Set must be owned by the Phase 4 project.'
 }
 $metadataPatch = $script:requests | Where-Object { $_.Path -eq 'varsets/varset-1' -and $_.Method -eq 'PATCH' }
 if ($null -ne $metadataPatch) {
