@@ -66,7 +66,7 @@ jobs:
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           NOTIFICATION_API_KEY: ${{ secrets.NOTIFICATION_API_KEY }}
           TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
-          GITHUB_SYNC_TOKEN: ${{ secrets.GITHUB_SYNC_TOKEN }}
+          GITHUB_SYNC_TOKEN: ${{ secrets.REPO_SYNC_TOKEN }}
           SYNC_APP_CLIENT_ID: ${{ vars.SYNC_APP_CLIENT_ID }}
           SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
         run: |
@@ -79,7 +79,7 @@ jobs:
             if [ -z "${!name:-}" ]; then missing+=("$name"); fi
           done
           if [ -z "$GITHUB_SYNC_TOKEN" ] && { [ -z "$SYNC_APP_CLIENT_ID" ] || [ -z "$SYNC_APP_PRIVATE_KEY" ]; }; then
-            missing+=("GITHUB_SYNC_TOKEN ou SYNC_APP_CLIENT_ID+SYNC_APP_PRIVATE_KEY")
+            missing+=("REPO_SYNC_TOKEN ou SYNC_APP_CLIENT_ID+SYNC_APP_PRIVATE_KEY")
           fi
           if [ "${NEW_RELIC_ENABLED,,}" = "true" ] && [ -z "$NEW_RELIC_LICENSE_KEY" ]; then
             missing+=("NEW_RELIC_LICENSE_KEY")
@@ -254,7 +254,7 @@ jobs:
         env:
           BACKEND_URL: ${{ steps.backend-url.outputs.value }}
           TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
-          GITHUB_SYNC_TOKEN: ${{ steps.sync-app-token.outputs.token || secrets.GITHUB_SYNC_TOKEN }}
+          GITHUB_SYNC_TOKEN: ${{ steps.sync-app-token.outputs.token || secrets.REPO_SYNC_TOKEN }}
         run: |
           set -euo pipefail
           python3 scripts/sync-backend-outputs.py \

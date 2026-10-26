@@ -782,7 +782,13 @@ function Invoke-Gh {
 
     & gh @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Falha no GitHub CLI: gh $($Arguments -join ' ')"
+        # Nunca exibe o valor de secrets na mensagem de erro.
+        $displayed = @($Arguments)
+        $bodyIndex = [Array]::IndexOf($displayed, '--body')
+        if ($displayed[0] -eq 'secret' -and $bodyIndex -ge 0 -and $bodyIndex + 1 -lt $displayed.Count) {
+            $displayed[$bodyIndex + 1] = '***'
+        }
+        throw "Falha no GitHub CLI: gh $($displayed -join ' ')"
     }
 }
 
@@ -1588,9 +1594,9 @@ if ($ConfigureNewRelic) {
 if (-not $SkipGitHub) {
     $githubSyncToken = Get-StoredSecret -Name 'github-sync-token' -Prompt 'GitHub fine-grained token de sincronização (Environments: Read and write nos 6 repos da Fase 4)' -Directory (Join-Path $SecretsRoot 'shared')
     foreach ($syncSourceKey in @('Backend', 'Auth', 'Database')) {
-        Set-GitHubRepositorySecret -Repository $RepositoryNames[$syncSourceKey] -Name GITHUB_SYNC_TOKEN -Value $githubSyncToken
+        Set-GitHubRepositorySecret -Repository $RepositoryNames[$syncSourceKey] -Name REPO_SYNC_TOKEN -Value $githubSyncToken
     }
-    Write-Host 'GITHUB_SYNC_TOKEN configurado no OS Service, no Auth e no Database.'
+    Write-Host 'REPO_SYNC_TOKEN configurado no OS Service, no Auth e no Database.'
 }
 
 if ($ConfigureSonarCloud -and -not $SkipGitHub) {

@@ -98,7 +98,7 @@ foreach ($phase4Setting in @(
     'Set-GitHubBranchRuleset -Repository $entry.Value -Branch $branch',
     '-Name MERCADOPAGO_ACCESS_TOKEN',
     '-Name SONAR_TOKEN',
-    '-Name GITHUB_SYNC_TOKEN',
+    '-Name REPO_SYNC_TOKEN',
     "Get-StoredSecret -Name 'github-sync-token'",
     "foreach (`$serviceKey in @('OrcamentoPagamento', 'DiagnosticoReparo'))",
     "-Name `$queue.Key"
@@ -684,6 +684,21 @@ if ($repositorySecretArguments -contains '--env' -or $repositorySecretArguments[
     throw 'Repository secrets must be stored at repository level with the exact value.'
 }
 Remove-Item Function:\gh
+
+function gh { $global:LASTEXITCODE = 1 }
+try {
+    Set-GitHubRepositorySecret -Repository oficina-os-service -Name REPO_SYNC_TOKEN -Value 'valor-secreto'
+    throw 'A failing gh call must throw.'
+}
+catch {
+    if ($_.Exception.Message -like '*valor-secreto*' -or $_.Exception.Message -notlike '*--body `*`*`* *') {
+        throw "Secret value leaked in the GitHub CLI error: $($_.Exception.Message)"
+    }
+}
+Remove-Item Function:\gh
+if ($sourceText -match "-Name\s+'?GITHUB_") {
+    throw 'GitHub rejects secret names starting with GITHUB_.'
+}
 
 $mainRuleset = New-BranchRulesetPayload -Branch main -RequiredChecks @('Repository validation', 'SonarCloud')
 $homologRuleset = New-BranchRulesetPayload -Branch homolog -RequiredChecks @('Repository validation')
