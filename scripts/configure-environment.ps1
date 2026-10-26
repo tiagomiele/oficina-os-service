@@ -5,7 +5,7 @@ param(
     [string]$RepositoriesRoot,
     [string]$TerraformOrganization = 'oficina-fiap-soat-fase-2',
     [string]$TerraformProject = 'soat-fase4',
-    [string]$TerraformProjectId = 'prj-DTmQK73Lioz8zHBm',
+    [string]$TerraformProjectId = 'prj-UTzD6p6PqRVEr27C',
     [string]$SonarOrganization = 'tiagomiele',
     [string]$AwsCredentialsFile,
     [string]$SecretsRoot,
@@ -383,12 +383,11 @@ function Invoke-HcpApi {
 
 function Get-HcpProject {
     $project = (Invoke-HcpApi -Method GET -Path "projects/$TerraformProjectId" -Context "consultar o projeto $TerraformProject ($TerraformProjectId)").data
-    if ([string]$project.attributes.name -ne $TerraformProject) {
-        throw "O projeto $TerraformProjectId se chama '$($project.attributes.name)', esperado '$TerraformProject'."
-    }
+    # O id é a referência do projeto da Fase 4; o nome vem do HCP só para as mensagens.
+    $script:TerraformProject = [string]$project.attributes.name
     $organization = [string]$project.relationships.organization.data.id
     if ($organization -ne $TerraformOrganization) {
-        throw "O projeto $TerraformProject pertence à organização '$organization', esperado '$TerraformOrganization'."
+        throw "O projeto $TerraformProjectId pertence à organização '$organization', esperado '$TerraformOrganization'."
     }
     $project
 }

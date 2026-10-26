@@ -84,7 +84,7 @@ foreach ($backendSynchronizationSetting in @(
 
 foreach ($phase4Setting in @(
     "[string]`$TerraformProject = 'soat-fase4'",
-    "[string]`$TerraformProjectId = 'prj-DTmQK73Lioz8zHBm'",
+    "[string]`$TerraformProjectId = 'prj-UTzD6p6PqRVEr27C'",
     "Get-StoredSecret -Name 'hcp-terraform-token-fase4'",
     "Backend            = 'oficina-os-service'",
     "OrcamentoPagamento = 'oficina-orcamento-pagamento-service'",
@@ -560,11 +560,11 @@ $script:projectResponse = [pscustomobject]@{
 if ((Get-HcpProject).id -ne 'prj-1') {
     throw 'Phase 4 project must be read by id.'
 }
-$script:projectResponse.attributes.name = 'outro-projeto'
+$script:projectResponse.relationships.organization.data.id = 'outra-organizacao'
 $wrongProjectRejected = $false
 try { Get-HcpProject | Out-Null } catch { $wrongProjectRejected = $true }
 if (-not $wrongProjectRejected) {
-    throw 'A project with another name must be rejected.'
+    throw 'A project from another organization must be rejected.'
 }
 
 $script:existingWorkspace = [pscustomobject]@{
