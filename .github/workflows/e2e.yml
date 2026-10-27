@@ -2,6 +2,13 @@
 name: Validacao E2E
 
 on:
+  # O GitHub só aceita workflow_dispatch de workflow já registrado; enquanto a main
+  # não tem os workflows, o 1º push na homolog registra este e já roda o E2E.
+  push:
+    branches: [homolog]
+    paths:
+      - '.github/workflows/e2e.yml'
+      - 'tests/postman/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -17,14 +24,14 @@ on:
         default: false
 
 concurrency:
-  group: e2e-${{ inputs.environment }}
+  group: e2e-${{ inputs.environment || 'homolog' }}
   cancel-in-progress: false
 
 jobs:
   functional:
-    name: Postman/Newman (${{ inputs.environment }})
+    name: Postman/Newman (${{ inputs.environment || 'homolog' }})
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.environment || 'homolog' }}
     permissions:
       contents: read
     env:
@@ -45,7 +52,7 @@ jobs:
           set -euo pipefail
           for name in BACKEND_BASE_URL API_GATEWAY_BASE_URL AUTH_BASE_URL ADMIN_PASSWORD EKS_CLUSTER_NAME AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
             if [ -z "${!name:-}" ]; then
-              echo "::error::$name ausente no GitHub Environment '${{ inputs.environment }}'."
+              echo "::error::$name ausente no GitHub Environment '${{ inputs.environment || 'homolog' }}'."
               exit 1
             fi
           done
@@ -67,8 +74,8 @@ jobs:
           lb() {
             kubectl get svc "$1" -n "$2" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
           }
-          dr_host="$(lb oficina-diagnostico-reparo 'oficina-diagnostico-reparo-${{ inputs.environment }}')"
-          op_host="$(lb oficina-orcamento-pagamento 'oficina-orcamento-pagamento-${{ inputs.environment }}')"
+          dr_host="$(lb oficina-diagnostico-reparo 'oficina-diagnostico-reparo-${{ inputs.environment || 'homolog' }}')"
+          op_host="$(lb oficina-orcamento-pagamento 'oficina-orcamento-pagamento-${{ inputs.environment || 'homolog' }}')"
           if [ -z "$dr_host" ] || [ -z "$op_host" ]; then
             echo "::error::LoadBalancer sem hostname. Faça o deploy dos 2 serviços antes do E2E."
             exit 1
@@ -100,17 +107,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: newman-${{ inputs.environment }}-${{ github.run_id }}
+          name: newman-${{ inputs.environment || 'homolog' }}-${{ github.run_id }}
           path: tests/postman/newman-results.xml
           if-no-files-found: warn
           retention-days: 14
 
   load:
-    name: k6 smoke load (${{ inputs.environment }})
+    name: k6 smoke load (${{ inputs.environment || 'homolog' }})
     needs: functional
     if: inputs.run_load_test
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.environment || 'homolog' }}
     permissions:
       contents: read
     steps:
