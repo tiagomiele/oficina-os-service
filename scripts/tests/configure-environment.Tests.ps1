@@ -701,39 +701,27 @@ if ($sourceText -match "-Name\s+'?GITHUB_") {
     throw 'GitHub rejects secret names starting with GITHUB_.'
 }
 
-# Simula o Windows PowerShell 5.1, que não enumera o array devolvido pelo ConvertFrom-Json.
-function ConvertFrom-Json {
-    param([Parameter(ValueFromPipeline = $true)][string]$InputObject)
-    process { Write-Output -NoEnumerate (Microsoft.PowerShell.Utility\ConvertFrom-Json $InputObject -NoEnumerate) }
-}
 foreach ($rulesetCase in @(
-    @{ Response = '[]'; Expected = 'POST' },
-    @{ Response = '[{"id":7,"name":"Proteção homolog"}]'; Expected = 'PUT' }
+    @{ Response = @(); Expected = 'POST' },
+    @{ Response = @("8`tProte??o main", "7`tProte??o homolog"); Expected = 'PUT' }
 )) {
     $script:rulesetResponse = $rulesetCase.Response
     $script:ghCalls = @()
     function gh {
         $script:ghCalls += , @($args)
         $global:LASTEXITCODE = 0
-        if ($args.Count -eq 2 -and $args[0] -eq 'api') {
-            $script:rulesetReadEncoding = [Console]::OutputEncoding.WebName
-            $script:rulesetResponse
-        }
+        if ($args -contains '--jq') { $script:rulesetResponse }
     }
     Set-GitHubBranchRuleset -Repository oficina-os-service -Branch homolog -RequiredChecks @('Repository validation')
     $writeCall = @($script:ghCalls[1])
     if ($writeCall -notcontains $rulesetCase.Expected) {
-        throw "Ruleset sync must use $($rulesetCase.Expected) when the API returns $($rulesetCase.Response)."
-    }
-    if ($script:rulesetReadEncoding -ne 'utf-8') {
-        throw 'Rulesets must be read with UTF-8 console encoding so accented names match on Windows PowerShell 5.1.'
+        throw "Ruleset sync must use $($rulesetCase.Expected) when the API returns $($rulesetCase.Response -join ', ')."
     }
     if ($rulesetCase.Expected -eq 'PUT' -and ($writeCall -join ' ') -notlike '*rulesets/7*') {
-        throw 'Existing ruleset must be updated by id.'
+        throw 'Existing ruleset must be updated by id (ASCII name match, independent of console encoding).'
     }
     Remove-Item Function:\gh
 }
-Remove-Item Function:\ConvertFrom-Json
 $global:LASTEXITCODE = 0
 
 $mainRuleset = New-BranchRulesetPayload -Branch main -RequiredChecks @('Repository validation', 'SonarCloud')
