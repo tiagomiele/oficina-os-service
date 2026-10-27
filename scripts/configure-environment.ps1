@@ -922,22 +922,18 @@ function Set-GitHubBranchRuleset {
     )
 
     $payload = New-BranchRulesetPayload -Branch $Branch -RequiredChecks $RequiredChecks
-    # O gh responde em UTF-8; sem isto o Windows PowerShell 5.1 decodifica "Proteção" como "ProteÃ§Ã£o",
-    # não acha a regra existente e tenta criá-la de novo (HTTP 422).
-    $previousOutputEncoding = [Console]::OutputEncoding
-    try {
-        [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
-        $rulesetsOutput = @(& gh api "repos/$GitHubOwner/$Repository/rulesets" 2>&1)
-    }
-    finally {
-        [Console]::OutputEncoding = $previousOutputEncoding
-    }
+    # Compara só a parte ASCII do nome ("Proteção" -> "Prote??o"): o Windows PowerShell 5.1 decodifica a saída
+    # do gh com a página de código da console, e um nome acentuado não bateria (o POST repetido dá HTTP 422).
+    $asciiFilter = '.[] | [(.id | tostring), (.name | explode | map(if . > 127 then 63 else . end) | implode)] | @tsv'
+    $rulesetsOutput = @(& gh api "repos/$GitHubOwner/$Repository/rulesets" --jq $asciiFilter 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "Falha ao consultar as regras de proteção de $Repository."
     }
-    # No Windows PowerShell 5.1 o ConvertFrom-Json devolve o array JSON como um único objeto; a atribuição desembrulha.
-    $rulesets = ($rulesetsOutput -join [Environment]::NewLine) | ConvertFrom-Json
-    $existing = @($rulesets) | Where-Object { $_.name -eq $payload.name } | Select-Object -First 1
+    $asciiName = $payload.name -replace '[^\x00-\x7F]', '?'
+    $existing = @($rulesetsOutput | ForEach-Object {
+            $id, $name = ([string]$_) -split "`t", 2
+            if ($name -eq $asciiName) { [pscustomobject]@{ id = $id } }
+        }) | Select-Object -First 1
 
     $file = [IO.Path]::GetTempFileName()
     try {
