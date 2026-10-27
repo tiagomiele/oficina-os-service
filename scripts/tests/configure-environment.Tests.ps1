@@ -715,12 +715,18 @@ foreach ($rulesetCase in @(
     function gh {
         $script:ghCalls += , @($args)
         $global:LASTEXITCODE = 0
-        if ($args.Count -eq 2 -and $args[0] -eq 'api') { $script:rulesetResponse }
+        if ($args.Count -eq 2 -and $args[0] -eq 'api') {
+            $script:rulesetReadEncoding = [Console]::OutputEncoding.WebName
+            $script:rulesetResponse
+        }
     }
     Set-GitHubBranchRuleset -Repository oficina-os-service -Branch homolog -RequiredChecks @('Repository validation')
     $writeCall = @($script:ghCalls[1])
     if ($writeCall -notcontains $rulesetCase.Expected) {
         throw "Ruleset sync must use $($rulesetCase.Expected) when the API returns $($rulesetCase.Response)."
+    }
+    if ($script:rulesetReadEncoding -ne 'utf-8') {
+        throw 'Rulesets must be read with UTF-8 console encoding so accented names match on Windows PowerShell 5.1.'
     }
     if ($rulesetCase.Expected -eq 'PUT' -and ($writeCall -join ' ') -notlike '*rulesets/7*') {
         throw 'Existing ruleset must be updated by id.'

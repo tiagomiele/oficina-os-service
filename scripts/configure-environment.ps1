@@ -922,7 +922,16 @@ function Set-GitHubBranchRuleset {
     )
 
     $payload = New-BranchRulesetPayload -Branch $Branch -RequiredChecks $RequiredChecks
-    $rulesetsOutput = @(& gh api "repos/$GitHubOwner/$Repository/rulesets" 2>&1)
+    # O gh responde em UTF-8; sem isto o Windows PowerShell 5.1 decodifica "Proteção" como "ProteÃ§Ã£o",
+    # não acha a regra existente e tenta criá-la de novo (HTTP 422).
+    $previousOutputEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+        $rulesetsOutput = @(& gh api "repos/$GitHubOwner/$Repository/rulesets" 2>&1)
+    }
+    finally {
+        [Console]::OutputEncoding = $previousOutputEncoding
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Falha ao consultar as regras de proteção de $Repository."
     }
