@@ -13,6 +13,7 @@ spec:
     name: oficina-app
   minReplicas: 2
   maxReplicas: 5
+  # Só CPU: a JVM não devolve memória ao sistema e deixaria o HPA preso no máximo.
   metrics:
     - type: Resource
       resource:
@@ -20,12 +21,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
