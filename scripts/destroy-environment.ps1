@@ -289,6 +289,7 @@ function Remove-ServiceNamespaces {
 
     # Apagar o namespace remove o Service LoadBalancer, e o Kubernetes só libera o namespace depois de apagar o ELB.
     $namespaces = @($ServiceNamespaces | ForEach-Object { $_ -f $EnvironmentName })
+    Write-Host "  Apagando os namespaces $($namespaces -join ', ') (aguarda os LoadBalancers saírem)..."
     $delete = Invoke-NativeCommand -Command 'kubectl' -Arguments (@('delete', 'namespace') + $namespaces + @('--ignore-not-found', '--wait=true', '--timeout=15m'))
     if ($delete.ExitCode -ne 0) {
         throw "Falha ao apagar os namespaces dos serviços: $($delete.Output -join ' ')"
@@ -301,6 +302,9 @@ function Remove-ServiceNamespaces {
         $loadBalancers = @($items | Where-Object { [string]$_.spec.type -eq 'LoadBalancer' } | ForEach-Object { "$($_.metadata.namespace)/$($_.metadata.name)" })
         if ($loadBalancers.Count -gt 0) {
             Write-Warning "Ainda há Services LoadBalancer no cluster: $($loadBalancers -join ', '). Eles podem travar o destroy da VPC."
+        }
+        else {
+            Write-Host '  Namespaces apagados; nenhum Service LoadBalancer restante.'
         }
     }
 }
