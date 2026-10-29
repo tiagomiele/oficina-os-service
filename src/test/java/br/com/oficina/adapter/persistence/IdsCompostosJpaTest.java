@@ -13,7 +13,6 @@ class IdsCompostosJpaTest {
   void idNotaFiscalComparaTodosOsCampos() {
     NotaFiscalFornecedorIdJpa id = new NotaFiscalFornecedorIdJpa("1", "A", "11222333000181", DATA);
     assertThat(id)
-        .isEqualTo(id)
         .isEqualTo(new NotaFiscalFornecedorIdJpa("1", "A", "11222333000181", DATA))
         .hasSameHashCodeAs(new NotaFiscalFornecedorIdJpa("1", "A", "11222333000181", DATA))
         .isNotEqualTo(new NotaFiscalFornecedorIdJpa("2", "A", "11222333000181", DATA))
@@ -33,7 +32,6 @@ class IdsCompostosJpaTest {
   void idItemNotaFiscalComparaTodosOsCampos() {
     ItemNfIdJpa id = new ItemNfIdJpa("1", "A", "11222333000181", DATA, 7L);
     assertThat(id)
-        .isEqualTo(id)
         .isEqualTo(new ItemNfIdJpa("1", "A", "11222333000181", DATA, 7L))
         .hasSameHashCodeAs(new ItemNfIdJpa("1", "A", "11222333000181", DATA, 7L))
         .isNotEqualTo(new ItemNfIdJpa("2", "A", "11222333000181", DATA, 7L))
