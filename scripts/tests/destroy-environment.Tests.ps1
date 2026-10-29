@@ -13,15 +13,15 @@ if ([IO.File]::ReadAllBytes($source)[0] -ne 0xEF) {
 }
 
 $environmentParameter = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Environment' }
-if ($environmentParameter.Extent.Text -match 'production') {
-    throw 'The destroy script must only accept homolog.'
+if ($environmentParameter.Extent.Text -notmatch "ValidateSet\('homolog', 'production'\)") {
+    throw 'The destroy script must accept homolog and production.'
 }
 
 foreach ($assignment in $ast.FindAll({
     param($node)
     $node -is [Management.Automation.Language.AssignmentStatementAst] -and
     $node.Parent -eq $ast.EndBlock -and
-    $node.Left.Extent.Text -in @('$DestroySteps', '$ServiceNamespaces', '$RunSuccessStatuses', '$RunFailureStatuses')
+    $node.Left.Extent.Text -in @('$DestroySteps', '$ServiceNamespaces', '$RunSuccessStatuses', '$RunFailureStatuses', '$GitHubOwner', '$ApplyGates')
 }, $true)) {
     Invoke-Expression $assignment.Extent.Text
 }
@@ -181,6 +181,7 @@ $script:awsCalls = [Collections.Generic.List[string]]::new()
 $script:kubectlCalls = [Collections.Generic.List[string]]::new()
 $script:clusterExists = $true
 $script:eniCounts = [Collections.Generic.Queue[int]]::new()
+$script:rdsJson = '{"DBInstances":[{"DBInstanceIdentifier":"oficina-homolog-os"},{"DBInstanceIdentifier":"outro-projeto"}]}'
 function aws {
     param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
 
@@ -195,7 +196,7 @@ function aws {
         $count = $script:eniCounts.Dequeue()
         return (@{ NetworkInterfaces = @(1..$count | Where-Object { $count -gt 0 } | ForEach-Object { @{ NetworkInterfaceId = "eni-$_" } }) } | ConvertTo-Json -Depth 5)
     }
-    if ($line -like 'rds describe-db-instances*') { return '{"DBInstances":[{"DBInstanceIdentifier":"oficina-homolog-os"},{"DBInstanceIdentifier":"outro-projeto"}]}' }
+    if ($line -like 'rds describe-db-instances*') { return $script:rdsJson }
     if ($line -like 'dynamodb list-tables*') { return '{"TableNames":["oficina-homolog-execucoes"]}' }
     if ($line -like 'sqs list-queues*') { return '{}' }
 }
@@ -232,5 +233,43 @@ if (-not (@($script:awsCalls) | Where-Object { $_ -like '*Name=vpc-id,Values=vpc
 $script:clusterExists = $false
 $leftovers = Show-RemainingResources -EnvironmentName homolog 3>$null 6>$null
 if ($leftovers -ne 2) { throw "Expected 2 leftovers (RDS and DynamoDB), got $leftovers." }
+
+$script:rdsJson = '{"DBInstances":[{"DBInstanceIdentifier":"oficina-production-os","DeletionProtection":false},{"DBInstanceIdentifier":"outro-projeto","DeletionProtection":true}]}'
+Assert-RdsDeletionProtectionDisabled -EnvironmentName production
+$script:rdsJson = '{"DBInstances":[{"DBInstanceIdentifier":"oficina-production-os","DeletionProtection":true}]}'
+try {
+    Assert-RdsDeletionProtectionDisabled -EnvironmentName production
+    throw 'Protected RDS must block the destroy.'
+}
+catch {
+    if ($_.Exception.Message -notlike '*deletion protection: oficina-production-os*') { throw }
+}
+
+$script:ghCalls = [Collections.Generic.List[string]]::new()
+$script:ghExitCode = 0
+function gh {
+    param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+
+    $script:ghCalls.Add($Arguments -join ' ')
+    $global:LASTEXITCODE = $script:ghExitCode
+}
+Disable-ApplyGates -EnvironmentName production 6>$null
+foreach ($expected in @(
+    'variable set TF_APPLY_ENABLED --body false --repo tiagomiele/oficina-auth-serverless --env production',
+    'variable set ENABLE_TERRAFORM_APPLY --body false --repo tiagomiele/oficina-database-infra --env production',
+    'variable set DEPLOY_ENABLED --body false --repo tiagomiele/oficina-os-service --env production',
+    'variable set DEPLOY_ENABLED --body false --repo tiagomiele/oficina-orcamento-pagamento-service --env production',
+    'variable set DEPLOY_ENABLED --body false --repo tiagomiele/oficina-diagnostico-reparo-service --env production'
+)) {
+    if (-not ($script:ghCalls -contains $expected)) { throw "Missing gate update: $expected" }
+}
+$script:ghExitCode = 1
+try {
+    Disable-ApplyGates -EnvironmentName homolog 6>$null
+    throw 'gh failure must stop the destroy.'
+}
+catch {
+    if ($_.Exception.Message -notlike 'Falha ao desligar TF_APPLY_ENABLED*') { throw }
+}
 
 Write-Host 'destroy-environment.ps1 tests passed.'
