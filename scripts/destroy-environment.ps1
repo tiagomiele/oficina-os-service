@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
-    # Somente homologação: produção tem deletion_protection e snapshot final e não é destruída por script.
-    [ValidateSet('homolog')]
+    # Produção só com o perfil descartável do AWS Academy: o perfil endurecido (deletion_protection) é recusado.
+    [ValidateSet('homolog', 'production')]
     [string]$Environment = 'homolog',
     [ValidateSet('auth', 'namespaces', 'newrelic', 'db-diagnostico-reparo', 'db-orcamento-pagamento', 'db-os', 'lambda-enis', 'kubernetes', 'verificacao')]
     [string]$StartAt = 'auth',
@@ -30,6 +30,15 @@ $DestroySteps = @(
     @{ Name = 'verificacao';            Workspace = $null }
 )
 $ServiceNamespaces = @('oficina-{0}', 'oficina-orcamento-pagamento-{0}', 'oficina-diagnostico-reparo-{0}')
+$GitHubOwner = 'tiagomiele'
+# Desligados antes do destroy: com o ambiente fora do ar, um merge na branch dele recriaria recursos órfãos.
+$ApplyGates = @(
+    @{ Repository = 'oficina-auth-serverless';             Name = 'TF_APPLY_ENABLED' }
+    @{ Repository = 'oficina-database-infra';              Name = 'ENABLE_TERRAFORM_APPLY' }
+    @{ Repository = 'oficina-os-service';                  Name = 'DEPLOY_ENABLED' }
+    @{ Repository = 'oficina-orcamento-pagamento-service'; Name = 'DEPLOY_ENABLED' }
+    @{ Repository = 'oficina-diagnostico-reparo-service';  Name = 'DEPLOY_ENABLED' }
+)
 $RunSuccessStatuses = @('applied', 'planned_and_finished')
 $RunFailureStatuses = @('errored', 'canceled', 'force_canceled', 'discarded', 'policy_soft_failed')
 
@@ -202,7 +211,7 @@ function New-DestroyRunBody {
             attributes    = @{
                 'is-destroy' = $true
                 'auto-apply' = $true
-                message      = 'Destroy da homologação via scripts/destroy-environment.ps1'
+                message      = 'Destroy via scripts/destroy-environment.ps1'
             }
             relationships = @{
                 workspace               = @{ data = @{ type = 'workspaces'; id = $WorkspaceId } }
@@ -402,6 +411,36 @@ function Show-RemainingResources {
     $leftovers.Count
 }
 
+function Assert-RdsDeletionProtectionDisabled {
+    param([Parameter(Mandatory)][string]$EnvironmentName)
+
+    $result = Invoke-NativeCommand -Command 'aws' -Arguments @('rds', 'describe-db-instances', '--region', $Region, '--output', 'json')
+    if ($result.ExitCode -ne 0) {
+        throw "Falha ao listar as instâncias RDS: $($result.Output -join ' ')"
+    }
+    $parsed = ConvertFrom-NativeJson -Result $result
+    $instances = if ($null -eq $parsed) { @() } else { @($parsed.DBInstances) }
+    $protected = @($instances | Where-Object {
+        $property = $_.PSObject.Properties['DeletionProtection']
+        [string]$_.DBInstanceIdentifier -like "oficina-$EnvironmentName*" -and $null -ne $property -and [bool]$property.Value
+    } | ForEach-Object { [string]$_.DBInstanceIdentifier })
+    if ($protected.Count -gt 0) {
+        throw "RDS com deletion protection: $($protected -join ', '). O perfil endurecido não é destruído por script. Nada foi destruído."
+    }
+}
+
+function Disable-ApplyGates {
+    param([Parameter(Mandatory)][string]$EnvironmentName)
+
+    foreach ($gate in $ApplyGates) {
+        $result = Invoke-NativeCommand -Command 'gh' -Arguments @('variable', 'set', $gate.Name, '--body', 'false', '--repo', "$GitHubOwner/$($gate.Repository)", '--env', $EnvironmentName)
+        if ($result.ExitCode -ne 0) {
+            throw "Falha ao desligar $($gate.Name) em $($gate.Repository) ($EnvironmentName): $($result.Output -join ' ')"
+        }
+        Write-Host "  $($gate.Repository): $($gate.Name)=false"
+    }
+}
+
 function Invoke-DestroyStep {
     param([Parameter(Mandatory)][hashtable]$Step)
 
@@ -416,7 +455,7 @@ function Invoke-DestroyStep {
 if ([string]::IsNullOrWhiteSpace($SecretsRoot)) {
     $SecretsRoot = if ($env:OS -eq 'Windows_NT') { 'C:\fiap-secrets' } else { Join-Path $HOME '.oficina-secrets' }
 }
-foreach ($command in @('aws', 'kubectl')) {
+foreach ($command in @('aws', 'kubectl', 'gh')) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
         throw "Comando obrigatório não encontrado: $command"
     }
@@ -430,6 +469,7 @@ $account = [string](ConvertFrom-NativeJson -Result $identity).Account
 
 $script:HcpHeaders = @{ Authorization = "Bearer $(Get-HcpTokenFromStore -Directory (Join-Path $SecretsRoot 'shared'))" }
 $steps = Get-DestroyStepsFrom -Steps $DestroySteps -StartAt $StartAt
+Assert-RdsDeletionProtectionDisabled -EnvironmentName $Environment
 
 Write-Host ''
 Write-Host "Destroy de '$Environment' na conta AWS $account ($Region), projeto HCP $TerraformProjectId."
@@ -439,6 +479,10 @@ $answer = Read-Host "Digite '$Environment' para confirmar"
 if ($answer -ne $Environment) {
     throw 'Confirmação diferente do nome do ambiente. Nada foi destruído.'
 }
+
+Write-Host ''
+Write-Host '== gates de deploy'
+Disable-ApplyGates -EnvironmentName $Environment
 
 foreach ($step in $steps) {
     Write-Host ''
@@ -455,4 +499,4 @@ foreach ($step in $steps) {
 }
 
 Write-Host ''
-Write-Host "Homologação destruída. Para recriar, siga a seção 6 do bootstrap (Start Lab + configure-environment.ps1)."
+Write-Host "Ambiente '$Environment' destruído e gates de deploy desligados. Para recriar: Start Lab + configure-environment.ps1 -Environment $Environment (religa os gates) e os workflows de deploy na ordem."
