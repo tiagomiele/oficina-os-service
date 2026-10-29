@@ -7,10 +7,12 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /** Mensageria local (sem SQS): registra os comandos em log e mantém os últimos em memória. */
 @Component
+@Primary
 @ConditionalOnProperty(
     name = "oficina.mensageria.tipo",
     havingValue = "memoria",
