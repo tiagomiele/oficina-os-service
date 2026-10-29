@@ -272,4 +272,5 @@ catch {
     if ($_.Exception.Message -notlike 'Falha ao desligar TF_APPLY_ENABLED*') { throw }
 }
 
+$global:LASTEXITCODE = 0
 Write-Host 'destroy-environment.ps1 tests passed.'
