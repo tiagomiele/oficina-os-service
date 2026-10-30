@@ -1327,8 +1327,11 @@ if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Kubernetes -EnvironmentName $targetEnvironment -Name CLUSTER_NAME -Value "oficina-$targetEnvironment"
         Set-GitHubVariable -Repository $RepositoryNames.Kubernetes -EnvironmentName $targetEnvironment -Name APP_NAMESPACE -Value "oficina-$targetEnvironment"
         Set-GitHubVariable -Repository $RepositoryNames.Kubernetes -EnvironmentName $targetEnvironment -Name SYNTHETIC_MONITOR_ENABLED -Value 'false'
-        Set-GitHubVariable -Repository $RepositoryNames.Database -EnvironmentName $targetEnvironment -Name ENABLE_TERRAFORM_APPLY -Value 'true'
-        Set-GitHubVariable -Repository $RepositoryNames.Auth -EnvironmentName $targetEnvironment -Name TF_APPLY_ENABLED -Value 'true'
+        # Só o ambiente configurado ganha apply: o outro pode estar destruído, e um merge na branch dele recriaria recursos órfãos.
+        if ($targetEnvironment -eq $Environment) {
+            Set-GitHubVariable -Repository $RepositoryNames.Database -EnvironmentName $targetEnvironment -Name ENABLE_TERRAFORM_APPLY -Value 'true'
+            Set-GitHubVariable -Repository $RepositoryNames.Auth -EnvironmentName $targetEnvironment -Name TF_APPLY_ENABLED -Value 'true'
+        }
 
         foreach ($serviceKey in $ServiceRepositoryKeys) {
             Set-GitHubVariable -Repository $RepositoryNames[$serviceKey] -EnvironmentName $targetEnvironment -Name EKS_CLUSTER_NAME -Value "oficina-$targetEnvironment"

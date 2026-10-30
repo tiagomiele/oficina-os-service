@@ -72,6 +72,14 @@ foreach ($planEnvironmentSetting in @(
     }
 }
 
+$applyGateGuard = [regex]::Match($sourceText, "if \(\`$targetEnvironment -eq \`$Environment\) \{\s*Set-GitHubVariable[^\n]*ENABLE_TERRAFORM_APPLY -Value 'true'\s*Set-GitHubVariable[^\n]*TF_APPLY_ENABLED -Value 'true'\s*\}")
+if (-not $applyGateGuard.Success) {
+    throw 'Terraform apply gates must be enabled only for the configured environment.'
+}
+if (([regex]::Matches($sourceText, "(ENABLE_TERRAFORM_APPLY|TF_APPLY_ENABLED) -Value 'true'")).Count -ne 2) {
+    throw 'Terraform apply gates must not be enabled outside the configured-environment guard.'
+}
+
 foreach ($backendSynchronizationSetting in @(
     'Set-GitHubSecret -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name TF_API_TOKEN',
     'Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $targetEnvironment -Name TF_WORKSPACE_AUTH',
