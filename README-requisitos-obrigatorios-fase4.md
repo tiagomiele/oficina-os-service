@@ -84,10 +84,10 @@ Como ver os dados gravados (DBeaver/`psql` por túnel, Console e CLI do DynamoDB
 |---|---|---|---|
 | 1 | `INICIAR_DIAGNOSTICO` | OS → Diagnóstico | `RECEBIDA` |
 | 2 | `DIAGNOSTICO_INICIADO` / `DIAGNOSTICO_CONCLUIDO` | Diagnóstico → OS | `EM_DIAGNOSTICO` → `AGUARDANDO_APROVACAO` |
-| 3 | `GERAR_ORCAMENTO` | OS → Orçamento | `AGUARDANDO_APROVACAO` |
-| 4 | `ORCAMENTO_APROVADO` | Orçamento → OS (baixa estoque) | `EM_EXECUCAO` |
-| 5 | `INICIAR_REPARO` | OS → Diagnóstico/Reparo | `EM_EXECUCAO` |
-| 6 | `REPARO_CONCLUIDO` | Reparo → OS | `AGUARDANDO_PAGAMENTO` |
+| 3 | Promover `homolog → main` nos 6 repositórios (documentação da Fase 4, Auth sem banco do OS e a correção do Mercado Pago de [orcamento-pagamento#8](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/8)). Com a produção ligada, promova o OS Service antes do Auth | usuário |
+| 4 | ~~Evidência de cobertura no README de cada serviço~~ **resolvida** em [orcamento-pagamento#11](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/11) e [diagnostico-reparo#8](https://github.com/tiagomiele/oficina-diagnostico-reparo-service/pull/8) | — |
+| 5 | ~~Auth acessava o banco do OS~~ **resolvida** em [os-service#24](https://github.com/tiagomiele/oficina-os-service/pull/24), [auth-serverless#9](https://github.com/tiagomiele/oficina-auth-serverless/pull/9) e [database-infra#8](https://github.com/tiagomiele/oficina-database-infra/pull/8): o login consulta o cliente por REST | — |
+| 6 | ~~SonarCloud privado~~ **resolvida**: os 3 projetos estão públicos (Quality Gate `OK`) | — |
 | 7 | `SOLICITAR_PAGAMENTO` | OS → Pagamento | `AGUARDANDO_PAGAMENTO` |
 | 8 | `PAGAMENTO_CONFIRMADO` | Pagamento → OS | `PAGA` → `ENTREGUE` |
 
@@ -205,10 +205,10 @@ Sugestão de roteiro, com o que mostrar e onde:
 |---|---|---|
 | 1 | Gravar e publicar o vídeo de até 15 minutos (YouTube/Vimeo, público ou não listado) | grupo |
 | 2 | Montar o PDF do portal com participantes, links, vídeo, diagrama, Saga e justificativa (conteúdo nas seções 0, 3 e 10) | grupo |
-| 3 | Promover `homolog → main` nos 6 repositórios: a documentação da Fase 4 e a correção do Mercado Pago ([orcamento-pagamento#8](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/8), no [PR #9](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/9)) ainda não estão na `main` | usuário |
-| 4 | Evidência de cobertura no README de cada serviço: **feita** em [orcamento-pagamento#11](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/11) e [diagnostico-reparo#8](https://github.com/tiagomiele/oficina-diagnostico-reparo-service/pull/8); falta o merge | usuário (merge) |
-| 5 | Auth sem acesso ao banco do OS: **feito** em [os-service#24](https://github.com/tiagomiele/oficina-os-service/pull/24), [auth-serverless#9](https://github.com/tiagomiele/oficina-auth-serverless/pull/9) e [database-infra#8](https://github.com/tiagomiele/oficina-database-infra/pull/8). Falta o merge e o deploy, nesta ordem: OS Service (CD) → Auth (Terraform deploy) | usuário (merge e deploy) |
-| 6 | Os projetos do SonarCloud podem estar privados: os links da seção 4 só abrem para quem tem acesso. Para o professor ver, deixe-os públicos ou use prints | usuário |
+| 3 | Promover `homolog → main` nos 6 repositórios (documentação da Fase 4, Auth sem banco do OS e a correção do Mercado Pago de [orcamento-pagamento#8](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/8)). Com a produção ligada, promova o OS Service antes do Auth | usuário |
+| 4 | ~~Evidência de cobertura no README de cada serviço~~ **resolvida** em [orcamento-pagamento#11](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/11) e [diagnostico-reparo#8](https://github.com/tiagomiele/oficina-diagnostico-reparo-service/pull/8) | — |
+| 5 | ~~Auth acessava o banco do OS~~ **resolvida** em [os-service#24](https://github.com/tiagomiele/oficina-os-service/pull/24), [auth-serverless#9](https://github.com/tiagomiele/oficina-auth-serverless/pull/9) e [database-infra#8](https://github.com/tiagomiele/oficina-database-infra/pull/8): o login consulta o cliente por REST | — |
+| 6 | ~~SonarCloud privado~~ **resolvida**: os 3 projetos estão públicos (Quality Gate `OK`) | — |
 
 ## 10. Justificativa da divisão e das tecnologias
 
