@@ -5,6 +5,7 @@ import br.com.oficina.domain.model.Cliente;
 import br.com.oficina.domain.model.Documento;
 import br.com.oficina.usecase.gateway.ClienteRepository;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,6 +68,24 @@ public class ClienteServiceImpl {
     return repo.porDocumento(Documento.de(documentoRaw))
         .orElseThrow(
             () -> new BusinessException(ERRO_CLIENTE_NAO_CADASTRADO, MSG_CLIENTE_NAO_CADASTRADO));
+  }
+
+  /**
+   * Usado pelo login do Auth Serverless: devolve o id só para CPF válido de cliente ativo. CPF
+   * inválido, CNPJ, cliente inexistente ou inativo resultam em vazio, sem distinguir o motivo.
+   */
+  @Transactional(readOnly = true)
+  public Optional<Long> idClienteAtivoPorCpf(String cpfRaw) {
+    Documento documento;
+    try {
+      documento = Documento.de(cpfRaw);
+    } catch (BusinessException e) {
+      return Optional.empty();
+    }
+    if (documento.tipo() != Documento.Tipo.CPF) {
+      return Optional.empty();
+    }
+    return repo.porDocumento(documento).filter(Cliente::isAtivo).map(Cliente::getIdCliente);
   }
 
   @Transactional(readOnly = true)

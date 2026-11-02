@@ -65,6 +65,7 @@ public class SecurityConfig {
                     // Infra / docs / login
                     .requestMatchers(
                         "/auth/login",
+                        "/interno/clientes/autenticacao",
                         "/actuator/health",
                         "/actuator/health/**",
                         "/actuator/info",
