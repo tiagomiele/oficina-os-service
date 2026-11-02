@@ -4,6 +4,8 @@
 
 Este repositório é o ponto de entrada da Oficina Fase 4: o que a solução faz, como os 6 repositórios se encaixam, como a Saga funciona e como subir e destruir tudo na AWS. O detalhe de cada parte fica no repositório específico (links na seção 3).
 
+**Atendimento ao enunciado da Fase 4, item a item:** [README-requisitos-obrigatorios-fase4.md](README-requisitos-obrigatorios-fase4.md).
+
 ## 1. O que a solução faz
 
 Uma oficina mecânica controla o atendimento de ponta a ponta: cadastro de cliente e veículo, abertura da Ordem de Serviço (OS), diagnóstico, orçamento, aprovação pelo cliente, reparo com baixa de peças, pagamento (Mercado Pago) e entrega.
@@ -62,6 +64,8 @@ Java 21, Spring Boot 3.3.4 (Web, Security, Data JPA, Validation, Actuator), Flyw
 ## 7. Saga em uma página
 
 ![Fluxo feliz da Saga entre os 3 serviços](docs/assets/saga-fluxo.png)
+
+**Por que orquestrada:** o fluxo da OS é sequencial e o OS Service já era o dono do status da OS, que virou o estado da Saga. A regra do próximo passo e das compensações fica num lugar só, e os outros serviços só recebem comandos e respondem eventos. Na coreografia, cada serviço teria que conhecer os eventos dos outros e as compensações ficariam espalhadas, o que é mais difícil de testar e rastrear.
 
 Comandos, eventos, compensações e **como validar** (logs, filas, DLQ, banco, New Relic e BDD): [docs/saga/README.md](docs/saga/README.md). Contrato das mensagens: [docs/saga/contrato-mensagens.md](docs/saga/contrato-mensagens.md).
 
