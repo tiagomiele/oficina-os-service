@@ -28,7 +28,7 @@ Na Fase 4 o antigo backend foi dividido em 3 serviços. Cada um tem banco própr
 | **oficina-os-service** (este) | clientes, veículos, OS, catálogo, estoque, notas de fornecedor, financeiro, usuários, relatórios; orquestra a Saga | RDS PostgreSQL | este README, [Saga](docs/saga/README.md), [Bootstrap](docs/bootstrap-aws-do-zero-fase4.md) |
 | [oficina-diagnostico-reparo-service](https://github.com/tiagomiele/oficina-diagnostico-reparo-service) | fila e etapas do técnico (diagnóstico e reparo) | DynamoDB | [README](https://github.com/tiagomiele/oficina-diagnostico-reparo-service#readme) |
 | [oficina-orcamento-pagamento-service](https://github.com/tiagomiele/oficina-orcamento-pagamento-service) | orçamento, aprovação do cliente, pagamento Mercado Pago/fake e webhook | RDS PostgreSQL | [README](https://github.com/tiagomiele/oficina-orcamento-pagamento-service#readme) |
-| [oficina-auth-serverless](https://github.com/tiagomiele/oficina-auth-serverless) | login do cliente por CPF, JWT RS256, Authorizer, API Gateway e notificações | leitura de `clientes` | [README](https://github.com/tiagomiele/oficina-auth-serverless#readme) |
+| [oficina-auth-serverless](https://github.com/tiagomiele/oficina-auth-serverless) | login do cliente por CPF, JWT RS256, Authorizer, API Gateway e notificações | consulta o OS por REST (`POST /interno/clientes/autenticacao`) | [README](https://github.com/tiagomiele/oficina-auth-serverless#readme) |
 | [oficina-database-infra](https://github.com/tiagomiele/oficina-database-infra) | 2 RDS, DynamoDB, 3 filas SQS com DLQ e telemetria | — | [README](https://github.com/tiagomiele/oficina-database-infra#readme) |
 | [oficina-kubernetes-infra](https://github.com/tiagomiele/oficina-kubernetes-infra) | VPC, EKS, add-ons e observabilidade New Relic | — | [README](https://github.com/tiagomiele/oficina-kubernetes-infra#readme) |
 
@@ -79,6 +79,7 @@ Swagger UI em `<url-do-serviço>/swagger-ui.html` e OpenAPI em `/v3/api-docs`, c
 | Técnico | técnico | `/ordens-servico/{numeroOs}/servicos`, `/pecas`, `/entregar`, `/cancelar-diagnostico` |
 | Cliente | público | `/consulta/ordens-servico/{numeroOs}/status`, `/ordens-servico/{numeroOs}/historico` |
 | Auth | todos | `POST /auth/login` |
+| Interno | Lambda de login do Auth (chave `X-Api-Key`) | `POST /interno/clientes/autenticacao`: devolve o `idCliente` de um CPF ativo, ou 404 |
 
 Ver os dados gravados (DBeaver/`psql` por túnel, DynamoDB e filas): [Database Infra](https://github.com/tiagomiele/oficina-database-infra#readme).
 

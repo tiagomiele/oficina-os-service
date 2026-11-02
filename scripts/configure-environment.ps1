@@ -1272,8 +1272,6 @@ $orcamentoPagamentoDatabaseWorkspace = $hcpWorkspaces[$WorkspaceNames.DatabaseOr
 $diagnosticoReparoDatabaseWorkspace = $hcpWorkspaces[$WorkspaceNames.DatabaseDiagnosticoReparo[$Environment]]
 Set-HcpWorkspaceVariable -Workspace $databaseWorkspace -Key db_password -Value $dbPassword -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $orcamentoPagamentoDatabaseWorkspace -Key db_password -Value $orcamentoPagamentoDbPassword -Sensitive $true
-Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key db_user -Value 'oficina_admin' -Sensitive $true
-Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key db_password -Value $dbPassword -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key jwt_private_key -Value $jwtPrivateKey -Sensitive $true
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key jwt_public_key -Value $jwtPublicKey
 Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key notification_api_key -Value $notificationApiKey -Sensitive $true
@@ -1395,7 +1393,6 @@ $databaseOutputs = Get-HcpTerraformOutputs -Workspace $hcpWorkspaces[$WorkspaceN
 $jdbcOutput = Get-TerraformOutput -Outputs $databaseOutputs -Name jdbc_url
 if ($null -ne $jdbcOutput) {
     $jdbcUrl = [string]$jdbcOutput.value
-    $authJdbcUrl = "${jdbcUrl}?sslmode=require"
     $contextValues['jdbcUrl'] = $jdbcUrl
     $databaseEndpointOutput = Get-TerraformOutput -Outputs $databaseOutputs -Name database_endpoint
     $databasePortOutput = Get-TerraformOutput -Outputs $databaseOutputs -Name database_port
@@ -1409,13 +1406,12 @@ if ($null -ne $jdbcOutput) {
     if ($null -ne $databaseNameOutput) {
         $contextValues['dbName'] = [string]$databaseNameOutput.value
     }
-    Set-HcpWorkspaceVariable -Workspace $authWorkspace -Key db_url -Value $authJdbcUrl -Sensitive $true
 
     if (-not $SkipGitHub) {
         Set-GitHubVariable -Repository $RepositoryNames.Backend -EnvironmentName $Environment -Name APP_DB_URL -Value $jdbcUrl
     }
     $databaseReady = $true
-    Write-Host 'Output do RDS sincronizado automaticamente com autenticação e backend.'
+    Write-Host 'Output do RDS sincronizado automaticamente com o backend.'
 }
 else {
     Write-Warning 'RDS ainda não possui output. Reexecute este mesmo script após o apply do banco.'
