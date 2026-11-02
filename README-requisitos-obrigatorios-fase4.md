@@ -11,7 +11,7 @@ Links de código apontam para a branch `homolog`, que já contém toda a documen
 | [oficina-os-service](https://github.com/tiagomiele/oficina-os-service) | **OS Service**: abertura, status, histórico e consulta da OS; orquestrador da Saga; documentação central | RDS PostgreSQL |
 | [oficina-orcamento-pagamento-service](https://github.com/tiagomiele/oficina-orcamento-pagamento-service) | **Orçamento e Pagamento** (Billing): orçamento, aprovação, pagamento Mercado Pago | RDS PostgreSQL |
 | [oficina-diagnostico-reparo-service](https://github.com/tiagomiele/oficina-diagnostico-reparo-service) | **Diagnóstico e Reparo** (Execução e Produção): fila do técnico, diagnóstico, reparo | DynamoDB |
-| [oficina-auth-serverless](https://github.com/tiagomiele/oficina-auth-serverless) | Login do cliente por CPF, JWT, Lambda Authorizer, API Gateway (Fase 3, ajustado) | lê `clientes` |
+| [oficina-auth-serverless](https://github.com/tiagomiele/oficina-auth-serverless) | Login do cliente por CPF, JWT, Lambda Authorizer, API Gateway (Fase 3, ajustado) | nenhum (consulta o OS por REST) |
 | [oficina-database-infra](https://github.com/tiagomiele/oficina-database-infra) | Terraform dos bancos e filas, uma pasta e um workspace por serviço | — |
 | [oficina-kubernetes-infra](https://github.com/tiagomiele/oficina-kubernetes-infra) | Terraform da VPC, do EKS, dos add-ons e do New Relic | — |
 
@@ -66,7 +66,7 @@ Como ver os dados gravados (DBeaver/`psql` por túnel, Console e CLI do DynamoDB
 | `oficina-<env>-diagnostico-reparo-comandos` | Diagnóstico e Reparo | OS Service |
 | `oficina-<env>-orcamento-pagamento-comandos` | Orçamento e Pagamento | OS Service |
 
-**Nenhum dos 3 serviços acessa o banco de outro.** Cada um recebe só as credenciais do próprio banco (variáveis do seu `k8s/app-deployment.yaml` e do seu GitHub Environment). Os dados que um serviço precisa do outro chegam no `payload` das mensagens. A única leitura compartilhada é a Lambda de login do Auth, que consulta `clientes` no banco do OS (ver [seção 9](#9-pendências)).
+**Nenhum dos 3 serviços acessa o banco de outro.** Cada um recebe só as credenciais do próprio banco (variáveis do seu `k8s/app-deployment.yaml` e do seu GitHub Environment). Os dados que um serviço precisa do outro chegam no `payload` das mensagens. A Lambda de login do Auth também não acessa o banco do OS: ela chama a rota interna `POST /interno/clientes/autenticacao` do OS Service com a chave `X-Api-Key` ([`InternoClienteController`](src/main/java/br/com/oficina/adapter/controller/InternoClienteController.java), [`OsServiceClientRepository`](https://github.com/tiagomiele/oficina-auth-serverless/blob/homolog/src/main/java/br/com/oficina/auth/adapter/out/http/OsServiceClientRepository.java)).
 
 ## 3. Saga Pattern
 
@@ -206,8 +206,8 @@ Sugestão de roteiro, com o que mostrar e onde:
 | 1 | Gravar e publicar o vídeo de até 15 minutos (YouTube/Vimeo, público ou não listado) | grupo |
 | 2 | Montar o PDF do portal com participantes, links, vídeo, diagrama, Saga e justificativa (conteúdo nas seções 0, 3 e 10) | grupo |
 | 3 | Promover `homolog → main` nos 6 repositórios: a documentação da Fase 4 e a correção do Mercado Pago ([orcamento-pagamento#8](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/8), no [PR #9](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/9)) ainda não estão na `main` | usuário |
-| 4 | O enunciado pede a evidência de cobertura "no README" de cada repositório. Hoje ela está neste documento; falta um link/print nos READMEs do Orçamento e Pagamento e do Diagnóstico e Reparo | Devin, se aprovado |
-| 5 | Ponto de atenção: a Lambda de login do Auth lê a tabela `clientes` do banco do OS Service. Ela não é um dos 3 microsserviços e só faz leitura, mas um avaliador pode apontar isso contra "nenhum serviço acessa o banco de outro". Alternativa: o Auth consultar o OS por uma rota REST interna | decisão do usuário |
+| 4 | Evidência de cobertura no README de cada serviço: **feita** em [orcamento-pagamento#11](https://github.com/tiagomiele/oficina-orcamento-pagamento-service/pull/11) e [diagnostico-reparo#8](https://github.com/tiagomiele/oficina-diagnostico-reparo-service/pull/8); falta o merge | usuário (merge) |
+| 5 | Auth sem acesso ao banco do OS: **feito** em [os-service#24](https://github.com/tiagomiele/oficina-os-service/pull/24), [auth-serverless#9](https://github.com/tiagomiele/oficina-auth-serverless/pull/9) e [database-infra#8](https://github.com/tiagomiele/oficina-database-infra/pull/8). Falta o merge e o deploy, nesta ordem: OS Service (CD) → Auth (Terraform deploy) | usuário (merge e deploy) |
 | 6 | Os projetos do SonarCloud podem estar privados: os links da seção 4 só abrem para quem tem acesso. Para o professor ver, deixe-os públicos ou use prints | usuário |
 
 ## 10. Justificativa da divisão e das tecnologias
