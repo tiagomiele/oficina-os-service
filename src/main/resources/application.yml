@@ -105,6 +105,9 @@ oficina:
       api-key: ${NOTIFICATION_API_KEY:}
       connect-timeout: ${NOTIFICATION_CONNECT_TIMEOUT:2s}
       read-timeout: ${NOTIFICATION_READ_TIMEOUT:12s}
+  interno:
+    # Chave compartilhada com o Auth Serverless (a mesma das notificações).
+    api-key: ${NOTIFICATION_API_KEY:}
   mensageria:
     # memoria (default, local/testes) ou sqs (EKS/LocalStack)
     tipo: ${MENSAGERIA_TIPO:memoria}
