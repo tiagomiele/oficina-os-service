@@ -68,14 +68,17 @@ function New-Cpf([string]$base) {
 $runId = [string][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $cpf   = New-Cpf $runId.Substring($runId.Length - 9)
 $plate = "TST$($runId.Substring($runId.Length - 3, 1))A$($runId.Substring($runId.Length - 2))"
-$tecEmail = "tecnico-$runId@teste.local"; $tecSenha = 'TecnicoSintetico123!'
+$tecEmail = "tecnico-$runId@teste.local"
+# Senha aleatória por execução: a conta sintética do técnico não tem senha conhecida fora deste script.
+$tecSenha = 'Tec#' + (-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ }))
 
 Write-Host '== Cadastros'
 Call POST "$backend/usuarios" $adminToken @{ email = $tecEmail; senha = $tecSenha; papel = 'TECNICO_DA_OFICINA' } | Out-Null
 $tecToken  = (Call POST "$backend/auth/login" $null @{ email = $tecEmail; senha = $tecSenha }).accessToken
 $clienteId = (Call POST "$backend/clientes" $adminToken @{ nome = "Cliente Mercado Pago $runId"; documento = $cpf; email = "mp-$runId@teste.local"; telefone = '11999999999' }).idCliente
 Call POST "$backend/veiculos" $adminToken @{ placa = $plate; marca = 'Fiat'; modelo = 'Uno'; ano = 2020; idCliente = $clienteId } | Out-Null
-$servicoId = (Call POST "$backend/servicos" $adminToken @{ nome = "Teste Mercado Pago $runId"; descricao = 'Teste do Mercado Pago'; precoBase = 150.00 }).idServico
+# Pagamentos de teste do Mercado Pago ficam abaixo de R$ 10.
+$servicoId = (Call POST "$backend/servicos" $adminToken @{ nome = "Teste Mercado Pago $runId"; descricao = 'Teste do Mercado Pago'; precoBase = 5.00 }).idServico
 
 Write-Host '== Saga: diagnostico'
 $os = (Call POST "$backend/ordens-servico" $adminToken @{ idCliente = $clienteId; placa = $plate; descricaoProblema = 'Teste do Mercado Pago' }).numero
