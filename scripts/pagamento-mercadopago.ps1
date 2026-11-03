@@ -77,7 +77,8 @@ Call POST "$backend/usuarios" $adminToken @{ email = $tecEmail; senha = $tecSenh
 $tecToken  = (Call POST "$backend/auth/login" $null @{ email = $tecEmail; senha = $tecSenha }).accessToken
 $clienteId = (Call POST "$backend/clientes" $adminToken @{ nome = "Cliente Mercado Pago $runId"; documento = $cpf; email = "mp-$runId@teste.local"; telefone = '11999999999' }).idCliente
 Call POST "$backend/veiculos" $adminToken @{ placa = $plate; marca = 'Fiat'; modelo = 'Uno'; ano = 2020; idCliente = $clienteId } | Out-Null
-$servicoId = (Call POST "$backend/servicos" $adminToken @{ nome = "Teste Mercado Pago $runId"; descricao = 'Teste do Mercado Pago'; precoBase = 5.00 }   # pagamentos de teste do Mercado Pago ficam abaixo de R$ 10).idServico
+# Pagamentos de teste do Mercado Pago ficam abaixo de R$ 10.
+$servicoId = (Call POST "$backend/servicos" $adminToken @{ nome = "Teste Mercado Pago $runId"; descricao = 'Teste do Mercado Pago'; precoBase = 5.00 }).idServico
 
 Write-Host '== Saga: diagnostico'
 $os = (Call POST "$backend/ordens-servico" $adminToken @{ idCliente = $clienteId; placa = $plate; descricaoProblema = 'Teste do Mercado Pago' }).numero
