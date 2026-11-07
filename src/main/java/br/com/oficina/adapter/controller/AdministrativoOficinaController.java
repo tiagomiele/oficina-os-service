@@ -714,7 +714,7 @@ public class AdministrativoOficinaController {
       summary = "02.6.02 - Abrir OS (Recebida)",
       description =
           "Cria a OS apenas com dados básicos (sem serviços, peças ou orçamento), no status"
-              + " RECEBIDA — comportamento da Fase 1. Não confundir com 02.6.01, que pode já"
+              + " RECEBIDA. Não confundir com 02.6.01, que pode já"
               + " incluir itens no orçamento.")
   @PostMapping("/ordens-servico/recebida")
   public ResponseEntity<OrdemServicoResponse> abrirOsRecebida(

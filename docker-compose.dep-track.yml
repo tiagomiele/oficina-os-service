@@ -21,7 +21,7 @@
 #     -F "projectVersion=0.1.0-SNAPSHOT" \
 #     -F "bom=@target/bom.xml"
 #
-# Documentacao completa: docs/security/dependency-track-guide.md
+# Documentacao completa: docs-fase1/04-security/dependency-track-readme.md
 # Documentacao oficial:  https://docs.dependencytrack.org/
 
 services:

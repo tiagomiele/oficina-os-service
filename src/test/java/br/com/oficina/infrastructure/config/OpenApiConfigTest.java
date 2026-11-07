@@ -43,11 +43,11 @@ class OpenApiConfigTest {
   }
 
   @Test
-  void identificaFaseTresSemDivulgarSenhaPadrao() {
+  void identificaFaseQuatroSemDivulgarSenhaPadrao() {
     OpenAPI openApi = new OpenApiConfig("https://auth.example.com").oficinaOpenAPI();
 
-    assertThat(openApi.getInfo().getTitle()).contains("Fase 3");
-    assertThat(openApi.getInfo().getVersion()).isEqualTo("3.0.0");
+    assertThat(openApi.getInfo().getTitle()).contains("Fase 4");
+    assertThat(openApi.getInfo().getVersion()).isEqualTo("4.0.0");
     assertThat(openApi.getInfo().getDescription()).doesNotContain("admin123");
   }
 }
