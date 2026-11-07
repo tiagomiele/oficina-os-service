@@ -124,11 +124,11 @@ public class OpenApiConfig {
     return new OpenAPI()
         .info(
             new Info()
-                .title("Tech Challenge FIAP - Fase 3 - Oficina Mecânica — API")
+                .title("Tech Challenge FIAP - Fase 4 - Oficina Mecânica — API")
                 .description(
                     "API da oficina mecânica. Clientes autenticam por CPF no Auth Serverless;"
-                        + " funcionários e técnicos autenticam por e-mail e senha no Backend.")
-                .version("3.0.0"))
+                        + " funcionários e técnicos autenticam por e-mail e senha no OS Service.")
+                .version("4.0.0"))
         .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
         .components(components)
         .path("/auth/cpf", new PathItem().post(cpfAuthentication));
