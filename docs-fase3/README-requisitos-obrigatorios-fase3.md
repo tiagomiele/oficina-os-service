@@ -50,8 +50,8 @@ Para visualizar os cenários, abra o link da última coluna. O GitHub exibirá o
 
 ### Evidências complementares de execução
 
-- [Swagger — autenticação pelo perfil Cliente](docs-fase3/evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Cliente-Oficina.pdf)
-- [Swagger — autenticação pelo perfil Funcionário da Oficina](docs-fase3/evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Funcionario-Oficina.pdf)
+- [Swagger — autenticação pelo perfil Cliente](evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Cliente-Oficina.pdf)
+- [Swagger — autenticação pelo perfil Funcionário da Oficina](evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Funcionario-Oficina.pdf)
 - [Vídeo auxiliar — proteção de rotas sensíveis e acesso por perfis](https://vimeo.com/1226754719) — duração: 3min50s.
 
 ## 2. Quatro repositórios e CI/CD
@@ -84,7 +84,7 @@ Os links abaixo comprovam execuções aprovadas das pipelines em produção.
 
 Os runs do quadro foram concluídos com `success`.
 
-As execuções de homologação e produção estão consolidadas na pasta de evidências ci-cd em: [documentação de CI/CD](docs-fase3/evidencias/02-cicd/CI-CD.md).
+As execuções de homologação e produção estão consolidadas na pasta de evidências ci-cd em: [documentação de CI/CD](evidencias/02-cicd/CI-CD.md).
 
 ## 3. Governança de branches
 
@@ -150,19 +150,19 @@ Os deploys apresentados na seção 2 comprovam a execução automatizada do Terr
 
 #### Produção
 
-- [Auth — execução](docs-fase3/evidencias/04-terraform-hcp/PRD-TF-auth1.pdf)
-- [Auth — reaplicação](docs-fase3/evidencias/04-terraform-hcp/PRD-TF-auth2.pdf)
-- [Database](docs-fase3/evidencias/04-terraform-hcp/PRD-TF-Db.pdf)
-- [Kubernetes](docs-fase3/evidencias/04-terraform-hcp/PRD-TF-kubernetes.pdf)
-- [New Relic](docs-fase3/evidencias/04-terraform-hcp/PRD-TF-newrelic.pdf)
+- [Auth — execução](evidencias/04-terraform-hcp/PRD-TF-auth1.pdf)
+- [Auth — reaplicação](evidencias/04-terraform-hcp/PRD-TF-auth2.pdf)
+- [Database](evidencias/04-terraform-hcp/PRD-TF-Db.pdf)
+- [Kubernetes](evidencias/04-terraform-hcp/PRD-TF-kubernetes.pdf)
+- [New Relic](evidencias/04-terraform-hcp/PRD-TF-newrelic.pdf)
 
 #### Workspaces
 
-- [Workspaces da solução](docs-fase3/evidencias/04-terraform-hcp/TF-Workspaces.pdf)
+- [Workspaces da solução](evidencias/04-terraform-hcp/TF-Workspaces.pdf)
 
 #### Evidências complementares do HCP Terraform para os ambientes de homologação e produção, encontram-se no índice abaixo:
 
-- [Índice das evidências de homologação e produção para implementação do HCP Terraform](docs-fase3/evidencias/04-terraform-hcp/Terraform-hcp.md)
+- [Índice das evidências de homologação e produção para implementação do HCP Terraform](evidencias/04-terraform-hcp/Terraform-hcp.md)
 
 ## 5. Aplicação principal no Kubernetes
 
@@ -186,7 +186,7 @@ Os links abaixo comprovam a conteinerização e a configuração da aplicação 
 
 - [Deploy de homologação aprovado](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/actions/runs/34795569734)
 - [Deploy de produção aprovado](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/actions/runs/34800781717)
-- [Diretório de evidências do Kubernetes Backend](docs-fase3/evidencias/05-kubernetes-backend/)
+- [Diretório de evidências do Kubernetes Backend](evidencias/05-kubernetes-backend/)
 - [Vídeo auxiliar — AWS-AWSacademy, EKS, aplicação e infra estrutura em cloud](https://vimeo.com/1226631740) — duração: 4min44s.
 
 ## 6. Banco de dados gerenciado e modelo relacional
@@ -201,7 +201,7 @@ O PostgreSQL oferece transações ACID, integridade referencial, maturidade e su
 
 Os links abaixo comprovam a implementação, a modelagem e as decisões técnicas do banco gerenciado.
 
-- [Justificativa PostgreSQL/RDS — ADR 0001 (arquivo.docx)](docs-fase3/evidencias/06-banco-de-dados/ADR_0001_Banco_Relacional_PostgreSQL.docx)
+- [Justificativa PostgreSQL/RDS — ADR 0001 (arquivo.docx)](evidencias/06-banco-de-dados/ADR_0001_Banco_Relacional_PostgreSQL.docx)
 - [Diagrama entidade-relacionamento](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-database-infra/blob/homolog/docs/assets/modelo-relacional-database.png)
 - [Modelo relacional](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-database-infra/blob/main/docs/modelo-relacional.md)
 - [Índices e desempenho](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-database-infra/blob/main/docs/indices-desempenho.md)
@@ -215,7 +215,7 @@ Os links abaixo comprovam a implementação, a modelagem e as decisões técnica
 
 ### Evidência de execução da conexão ao PostgreSQL
 
-- [Conexão aos bancos PostgreSQL de homologação e produção (arquivo.docx)](docs-fase3/evidencias/06-banco-de-dados/Evidencia-Conexao-BD.docx)
+- [Conexão aos bancos PostgreSQL de homologação e produção (arquivo.docx)](evidencias/06-banco-de-dados/Evidencia-Conexao-BD.docx)
 
 ## 7. Monitoramento, observabilidade e logs
 
@@ -234,13 +234,13 @@ O New Relic centraliza métricas, logs e traces do Backend, das funções server
 
 ### Evidências de execução da observabilidade
 
-- [New Relic — consumo de CPU](docs-fase3/evidencias/07-Monitoramento/NR-CPU.png)
-- [New Relic — disponibilidade da aplicação](docs-fase3/evidencias/07-Monitoramento/NR-Disponibilidade.png)
-- [New Relic — falhas nas ordens de serviço](docs-fase3/evidencias/07-Monitoramento/NR-Falhas-OS.png)
-- [New Relic — latência das APIs](docs-fase3/evidencias/07-Monitoramento/NR-latencia.png)
-- [New Relic — logs da aplicação](docs-fase3/evidencias/07-Monitoramento/NR-Logs.png)
-- [New Relic — tempo médio por status da ordem de serviço](docs-fase3/evidencias/07-Monitoramento/NR-Media-Status-OS.png)
-- [New Relic — volume diário de ordens de serviço](docs-fase3/evidencias/07-Monitoramento/NR-Vol-OS-dia.png)
+- [New Relic — consumo de CPU](evidencias/07-Monitoramento/NR-CPU.png)
+- [New Relic — disponibilidade da aplicação](evidencias/07-Monitoramento/NR-Disponibilidade.png)
+- [New Relic — falhas nas ordens de serviço](evidencias/07-Monitoramento/NR-Falhas-OS.png)
+- [New Relic — latência das APIs](evidencias/07-Monitoramento/NR-latencia.png)
+- [New Relic — logs da aplicação](evidencias/07-Monitoramento/NR-Logs.png)
+- [New Relic — tempo médio por status da ordem de serviço](evidencias/07-Monitoramento/NR-Media-Status-OS.png)
+- [New Relic — volume diário de ordens de serviço](evidencias/07-Monitoramento/NR-Vol-OS-dia.png)
 - [Vídeo auxiliar analises a dashboard/logs e traces New Relic (Negócio, Aplicação, Kubernets, Serveless/Api Gateway e RDS PostgreSql](https://vimeo.com/1226611174) — duração: 4min08s.
 
 ## 8. Documentação arquitetural, RFCs e ADRs
@@ -256,9 +256,9 @@ A documentação apresenta a arquitetura, os fluxos principais e as decisões t�
 | Sequência de abertura da OS | [abertura-ordem-servico.md](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/blob/main/docs-fase3/architecture/abertura-ordem-servico.md) |
 | RFCs | [docs/decisions/rfc](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/tree/main/docs-fase3/decisions/rfc)                                 |
 | ADRs | [docs/decisions/adr](https://github.com/tiagomiele/fiap-tech-challenge-fase3-oficina-backend/tree/main/docs-fase3/decisions/adr)                                 |
-| Diagrama ER | [diagrama entidade-relacionamento](docs-fase3/assets/modelo-relacional-database.png)                                                                             |
-| Arquitetura do Auth | [Arquitetura do Auth](docs-fase3/assets/arquitetura-integrada-oficina-fase3.png)                                                                                 |
-| Infraestrutura e observabilidade | [docs-fase3/evidencias/07-Monitoramento](docs-fase3/evidencias/07-Monitoramento)                                                                                        |
+| Diagrama ER | [diagrama entidade-relacionamento](assets/modelo-relacional-database.png)                                                                             |
+| Arquitetura do Auth | [Arquitetura do Auth](assets/arquitetura-integrada-oficina-fase3.png)                                                                                 |
+| Infraestrutura e observabilidade | [docs-fase3/evidencias/07-Monitoramento](evidencias/07-Monitoramento)                                                                                        |
 
 
 ## 9. READMEs para os quatro repositórios
@@ -274,8 +274,8 @@ Cada repositório documenta propósito, tecnologias, pré-requisitos, execução
 
 ### Evidências de execução dos contratos de API
 
-- [Swagger em execução — perfil Cliente](docs-fase3/evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Cliente-Oficina.pdf)
-- [Swagger em execução — perfil Funcionário](docs-fase3/evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Funcionario-Oficina.pdf)
+- [Swagger em execução — perfil Cliente](evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Cliente-Oficina.pdf)
+- [Swagger em execução — perfil Funcionário](evidencias/01-autenticacao-api-gateway/Swagger-Perfil-Funcionario-Oficina.pdf)
 
 ## 10. Documentação central e fechamento da entrega
 
@@ -283,5 +283,5 @@ A pasta `docs-fase3` reúne diagramas, decisões arquiteturais, evidências de e
 
 ### Acesso centralizado
 
-- [Abrir a pasta de documentação e evidências](docs-fase3/evidencias)
-- [Voltar ao README principal](README.md)
+- [Abrir a pasta de documentação e evidências](evidencias)
+- [Voltar ao README principal](../README.md)
