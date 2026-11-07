@@ -21,6 +21,14 @@ Na Fase 4 o antigo backend foi dividido em 3 serviços. Cada um tem banco própr
 
 ![Visão geral: usuários, API Gateway, 3 serviços no EKS, bancos, filas, Mercado Pago e New Relic](docs/assets/arquitetura-fase4.png)
 
+**Visão macro dos serviços e conexões principais**
+
+![Visão macro: serviços, REST APIs, bancos próprios, filas SQS e integrações externas](docs/assets/arquitetura-macro-fase4.png)
+
+**Arquitetura hexagonal: portas, adaptadores e integrações de cada serviço**
+
+![Arquitetura hexagonal: domínio, portas e adaptadores de cada serviço e as integrações](docs/assets/arquitetura-hexagonal-fase4.png)
+
 ## 3. Repositórios
 
 | Repositório | Responsabilidade | Dados | Documentação |
@@ -64,6 +72,10 @@ Java 21, Spring Boot 3.3.4 (Web, Security, Data JPA, Validation, Actuator), Flyw
 ## 7. Saga em uma página
 
 ![Fluxo feliz da Saga entre os 3 serviços](docs/assets/saga-fluxo.png)
+
+**Comandos e eventos da Saga orquestrada**
+
+![Saga orquestrada: comandos do OS Service, filas SQS e eventos de resposta numerados](docs/assets/saga-orquestrada-eventos-fase4.png)
 
 **Por que orquestrada:** o fluxo da OS é sequencial e o OS Service já era o dono do status da OS, que virou o estado da Saga. A regra do próximo passo e das compensações fica num lugar só, e os outros serviços só recebem comandos e respondem eventos. Na coreografia, cada serviço teria que conhecer os eventos dos outros e as compensações ficariam espalhadas, o que é mais difícil de testar e rastrear.
 

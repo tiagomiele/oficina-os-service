@@ -17,6 +17,10 @@ Links de código apontam para a branch `homolog`, que já contém toda a documen
 
 Visão geral: ![Arquitetura da Fase 4](docs/assets/arquitetura-fase4.png)
 
+Visão macro: ![Visão macro: serviços, REST APIs, bancos próprios, filas SQS e integrações externas](docs/assets/arquitetura-macro-fase4.png)
+
+Arquitetura hexagonal: ![Arquitetura hexagonal: domínio, portas e adaptadores de cada serviço e as integrações](docs/assets/arquitetura-hexagonal-fase4.png)
+
 ---
 
 ## 1. Separação em microsserviços
@@ -79,6 +83,8 @@ Como ver os dados gravados (DBeaver/`psql` por túnel, Console e CLI do DynamoDB
 - O rastreamento fica simples: o `correlationId` nasce na abertura da OS e o histórico da OS mostra a Saga inteira.
 
 **Fluxo:** ![Saga](docs/assets/saga-fluxo.png)
+
+**Comandos e eventos:** ![Saga orquestrada: comandos do OS Service, filas SQS e eventos de resposta numerados](docs/assets/saga-orquestrada-eventos-fase4.png)
 
 | Passo | Mensagem | De → Para | Status da OS |
 |---|---|---|---|
@@ -195,8 +201,8 @@ Sugestão de roteiro, com o que mostrar e onde:
 | Nome e identificação dos participantes | a preencher pelo grupo |
 | Links dos repositórios | [seção 0](#0-repositórios-da-solução) |
 | Link do vídeo | a preencher depois da gravação |
-| Diagrama geral da arquitetura | [docs/assets/arquitetura-fase4.png](docs/assets/arquitetura-fase4.png) |
-| Estratégia do Saga Pattern | [seção 3](#3-saga-pattern) |
+| Diagrama geral da arquitetura | [docs/assets/arquitetura-fase4.png](docs/assets/arquitetura-fase4.png), [visão macro](docs/assets/arquitetura-macro-fase4.png) e [arquitetura hexagonal](docs/assets/arquitetura-hexagonal-fase4.png) |
+| Estratégia do Saga Pattern | [seção 3](#3-saga-pattern) e [diagrama dos comandos e eventos](docs/assets/saga-orquestrada-eventos-fase4.png) |
 | Justificativa da divisão e das tecnologias | [seção 10](#10-justificativa-da-divisão-e-das-tecnologias) |
 
 ## 9. Pendências

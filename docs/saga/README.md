@@ -2,6 +2,8 @@
 
 ![Fluxo feliz da Saga](../assets/saga-fluxo.png)
 
+![Saga orquestrada: comandos do OS Service, filas SQS e eventos de resposta numerados](../assets/saga-orquestrada-eventos-fase4.png)
+
 ## 1. Ideia
 
 O **OS Service** é o orquestrador. Ele guarda o status da OS e decide o próximo passo. Os outros serviços só recebem **comandos** na fila deles e respondem com **eventos** na fila `os-eventos`.
