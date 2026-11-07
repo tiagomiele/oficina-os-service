@@ -361,7 +361,7 @@
           (~348k registros do NVD, ~30+ min na primeira execucao). A varredura
           de CVEs em CI eh feita via SBOM CycloneDX + OWASP Dependency-Track
           (servidor que processa SBOMs assincronamente). Veja:
-          docs/security/dependency-track-guide.md
+          docs-fase1/04-security/dependency-track-readme.md
         -->
         <profile>
             <id>owasp</id>

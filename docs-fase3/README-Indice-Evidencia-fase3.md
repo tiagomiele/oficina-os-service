@@ -33,11 +33,11 @@ Os vídeos apresentam demonstrações complementares dos principais cenários t�
 
 A pasta `docs-fase3` reúne diagramas de arquitetura, contratos, decisões técnicas, procedimentos de implantação e evidências organizadas por tópico.
 
-- [Acessar a pasta de documentações da Fase 3](docs-fase3)
-- [Acessar a pasta de evidências](docs-fase3/evidencias/)
+- [Acessar a pasta de documentações da Fase 3](.)
+- [Acessar a pasta de evidências](evidencias/)
 
 ## Bootstrap das aplicações
 
 O guia de bootstrap apresenta a sequência necessária para configurar e implantar os quatro projetos na AWS.
 
-- [Bootstrap da solução na AWS](docs-fase3/bootstrap-aws-do-zero.md)
+- [Bootstrap da solução na AWS](bootstrap-aws-do-zero.md)

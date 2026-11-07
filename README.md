@@ -194,7 +194,7 @@ O passo a passo completo, para quem nunca viu o projeto, está no **[Bootstrap d
 
 ## 12. Histórico
 
-Documentação das fases anteriores: [Fase 1](docs-fase1), [Fase 2](docs-fase2), [Fase 3](docs-fase3), [requisitos da Fase 3](README-requisitos-obrigatorios-fase3.md).
+Documentação das fases anteriores: [Fase 1](docs-fase1), [Fase 2](docs-fase2), [Fase 3](docs-fase3), [requisitos da Fase 3](docs-fase3/README-requisitos-obrigatorios-fase3.md) e [índice de evidências da Fase 3](docs-fase3/README-Indice-Evidencia-fase3.md).
 
 ## Licença
 
