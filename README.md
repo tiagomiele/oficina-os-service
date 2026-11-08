@@ -186,9 +186,12 @@ Principais variáveis:
 
 O passo a passo completo, para quem nunca viu o projeto, está no **[Bootstrap da Fase 4](docs/bootstrap-aws-do-zero-fase4.md)**: preparação, homologação, produção, validação da Saga, Mercado Pago e, na seção 26, a **destruição da infraestrutura para economizar créditos** (`scripts/destroy-environment.ps1`).
 
+Para subir um ambiente inteiro com um único comando, use o **[Bootstrap de uma única vez](README-bootstrap-unica-vez.md)** (`scripts/provision-environment.ps1`).
+
 | Script | Para quê |
 |---|---|
 | `scripts/configure-environment.ps1` | cria e sincroniza workspaces HCP, variáveis e secrets do GitHub |
+| `scripts/provision-environment.ps1` | sobe um ambiente inteiro (homolog ou production) de uma vez |
 | `scripts/destroy-environment.ps1` | destrói um ambiente na ordem certa |
 | `scripts/pagamento-mercadopago.ps1` | teste manual do Mercado Pago sandbox em produção |
 
