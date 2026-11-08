@@ -130,10 +130,14 @@ function Get-ConfigureArguments {
         [Parameter(Mandatory)][string]$EnvironmentName,
         [bool]$Initial = $false,
         [bool]$ReadClipboard = $true,
-        [string]$CredentialsFile
+        [string]$CredentialsFile,
+        [string]$RepositoriesRootPath
     )
 
     $arguments = @{ Environment = $EnvironmentName }
+    if (-not [string]::IsNullOrWhiteSpace($RepositoriesRootPath)) {
+        $arguments.RepositoriesRoot = $RepositoriesRootPath
+    }
     # Toda execução regrava os workspaces de produção: sem o perfil descartável, os RDS voltariam a Multi-AZ e deletion protection.
     $arguments.UseAwsAcademyDisposableProductionProfile = $true
     if ($Initial) {
@@ -161,7 +165,7 @@ function Invoke-ConfigureEnvironment {
     )
 
     $initial = $Step.ContainsKey('Initial') -and [bool]$Step.Initial
-    $arguments = Get-ConfigureArguments -EnvironmentName $EnvironmentName -Initial $initial -ReadClipboard (-not $script:CredentialsLoaded) -CredentialsFile (Get-LocalAwsCredentialsFile)
+    $arguments = Get-ConfigureArguments -EnvironmentName $EnvironmentName -Initial $initial -ReadClipboard (-not $script:CredentialsLoaded) -CredentialsFile (Get-LocalAwsCredentialsFile) -RepositoriesRootPath $RepositoriesRoot
     & $script:ConfigureScript @arguments
     if (-not $script:CredentialsLoaded) {
         Assert-AwsCredentials
@@ -196,6 +200,31 @@ function Assert-DeployGate {
     Write-Host "  $Repository`: DEPLOY_ENABLED=true"
 }
 
+function Get-GitHubLogin {
+    $result = Invoke-NativeCommand -Command 'gh' -Arguments @('api', 'user', '--jq', '.login')
+    $login = ($result.Output -join '').Trim()
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($login)) {
+        throw "Não foi possível identificar o usuário do gh. Rode gh auth login. $($result.Output -join ' ')"
+    }
+    $login
+}
+
+function Get-ResumeCommand {
+    param(
+        [Parameter(Mandatory)][string]$EnvironmentName,
+        [Parameter(Mandatory)][string]$StepName,
+        [bool]$E2E = $false,
+        [bool]$LoadTest = $false,
+        [string]$RepositoriesRootPath
+    )
+
+    $command = ".\scripts\provision-environment.ps1 -Environment $EnvironmentName -StartAt $StepName"
+    if ($E2E -and $StepName -ne 'e2e') { $command += ' -RunE2E' }
+    if ($LoadTest) { $command += ' -RunLoadTest' }
+    if (-not [string]::IsNullOrWhiteSpace($RepositoriesRootPath)) { $command += " -RepositoriesRoot `"$RepositoriesRootPath`"" }
+    $command
+}
+
 function Get-LatestDispatchRunId {
     param(
         [Parameter(Mandatory)][string]$Repository,
@@ -203,7 +232,8 @@ function Get-LatestDispatchRunId {
         [Parameter(Mandatory)][string]$Ref
     )
 
-    $result = Invoke-NativeCommand -Command 'gh' -Arguments @('run', 'list', '--repo', "$GitHubOwner/$Repository", '--workflow', $Workflow, '--branch', $Ref, '--event', 'workflow_dispatch', '--limit', '1', '--json', 'databaseId')
+    # Filtra pelo usuário do gh: um dispatch de outra pessoa no mesmo workflow não é confundido com o deste script.
+    $result = Invoke-NativeCommand -Command 'gh' -Arguments @('run', 'list', '--repo', "$GitHubOwner/$Repository", '--workflow', $Workflow, '--branch', $Ref, '--event', 'workflow_dispatch', '--user', $script:GitHubLogin, '--limit', '1', '--json', 'databaseId')
     if ($result.ExitCode -ne 0) {
         throw "Falha ao listar os runs de $Repository/$Workflow`: $($result.Output -join ' ')"
     }
@@ -370,6 +400,7 @@ if ([string]::IsNullOrWhiteSpace($RepositoriesRoot)) {
 }
 $script:ConfigureScript = Join-Path $PSScriptRoot 'configure-environment.ps1'
 $script:CredentialsLoaded = $false
+$script:GitHubLogin = Get-GitHubLogin
 $script:RunLinks = [Collections.Generic.List[string]]::new()
 $script:ServiceUrls = [Collections.Generic.List[string]]::new()
 
@@ -403,7 +434,7 @@ foreach ($step in $steps) {
         $resume = if ($step.Name -eq 'credenciais') { $StartAt } else { $step.Name }
         Write-Host ''
         Write-Host "A etapa '$($step.Name)' falhou. Depois de corrigir, retome com:" -ForegroundColor Red
-        Write-Host "  .\scripts\provision-environment.ps1 -Environment $Environment -StartAt $resume" -ForegroundColor Red
+        Write-Host "  $(Get-ResumeCommand -EnvironmentName $Environment -StepName $resume -E2E ([bool]$RunE2E) -LoadTest ([bool]$RunLoadTest) -RepositoriesRootPath $PSBoundParameters['RepositoriesRoot'])" -ForegroundColor Red
         throw
     }
 }
