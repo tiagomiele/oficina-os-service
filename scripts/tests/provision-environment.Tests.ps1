@@ -91,10 +91,20 @@ $later = Get-ConfigureArguments -EnvironmentName production -ReadClipboard $fals
 if ($later.AwsCredentialsFile -ne 'creds' -or $later.ContainsKey('ConfigureSonarCloud') -or $later.Environment -ne 'production') {
     throw 'Later configure runs must reuse the local credentials file.'
 }
+if ($initial.ContainsKey('RepositoriesRoot')) { throw 'RepositoriesRoot must only be passed when informed.' }
+$customRoot = Get-ConfigureArguments -EnvironmentName homolog -RepositoriesRootPath 'D:\projetos'
+if ($customRoot.RepositoriesRoot -ne 'D:\projetos') { throw 'RepositoriesRoot must be forwarded to configure-environment.ps1.' }
 foreach ($arguments in @($initial, $later)) {
     if (-not $arguments.UseAwsAcademyDisposableProductionProfile) { throw 'Every configure run must keep the disposable production profile.' }
 }
 
+$resume = Get-ResumeCommand -EnvironmentName homolog -StepName e2e -E2E $true -LoadTest $true
+if ($resume -ne '.\scripts\provision-environment.ps1 -Environment homolog -StartAt e2e -RunLoadTest') { throw "Unexpected resume: $resume" }
+$resume = Get-ResumeCommand -EnvironmentName production -StepName cd-os -E2E $true -LoadTest $true -RepositoriesRootPath 'D:\p'
+if ($resume -ne '.\scripts\provision-environment.ps1 -Environment production -StartAt cd-os -RunE2E -RunLoadTest -RepositoriesRoot "D:\p"') { throw "Resume must keep the optional validations: $resume" }
+if ((Get-ResumeCommand -EnvironmentName homolog -StepName auth) -ne '.\scripts\provision-environment.ps1 -Environment homolog -StartAt auth') { throw 'Plain resume changed.' }
+
+$script:GitHubLogin = 'tester'
 $script:ghCalls = [Collections.Generic.List[string]]::new()
 $script:runIds = [Collections.Generic.Queue[long]]::new()
 $script:runStates = [Collections.Generic.Queue[string]]::new()
@@ -106,7 +116,9 @@ function gh {
     $script:ghCalls.Add($line)
     $global:LASTEXITCODE = 0
     if ($line -like 'variable get DEPLOY_ENABLED*') { return $script:gateValue }
+    if ($line -eq 'api user --jq .login') { return 'tester' }
     if ($line -like 'run list*') {
+        if ($line -notlike '*--event workflow_dispatch --user tester *') { throw "Run list must filter by the gh user: $line" }
         $id = $script:runIds.Dequeue()
         if ($id -eq 0) { return '[]' }
         return "[{`"databaseId`":$id}]"
@@ -119,6 +131,7 @@ function gh {
     throw "Unexpected gh call: $line"
 }
 
+if ((Get-GitHubLogin) -ne 'tester') { throw 'Must read the gh login.' }
 $script:RunLinks = [Collections.Generic.List[string]]::new()
 foreach ($id in @(100, 100, 101)) { $script:runIds.Enqueue($id) }
 foreach ($state in @('queued:', 'in_progress:', 'completed:success')) { $script:runStates.Enqueue($state) }
