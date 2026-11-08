@@ -749,6 +749,39 @@ A coleção faz o health dos 3 serviços, a Saga até `PAGA`/`ENTREGUE` (pagamen
 
 O Newman só roda com `PAYMENT_PROVIDER=fake`. A validação com o Mercado Pago real vem depois, na seção 20.
 
+**17.1 E2E em produção**
+
+Use depois da seção 23, com a produção no ar. Antes, confira três coisas:
+- **Ambiente no ar:** `aws eks update-kubeconfig --region us-west-2 --name oficina-production` e `kubectl get pods -A`. Os 3 serviços devem estar `Running`.
+- **Lab ativo e `[default]` copiado:** o workflow usa as credenciais AWS gravadas no Environment `production` do GitHub.
+- **Pagamento no `fake`:** `gh variable list --repo tiagomiele/oficina-orcamento-pagamento-service --env production` não deve listar `PAYMENT_PROVIDER`, ou ela deve estar igual a `fake`.
+
+Pelo script, que renova as credenciais no GitHub e roda só o E2E (digite `production` na confirmação):
+
+```powershell
+Set-Location C:\fiap\fase4\oficina-os-service
+git pull --ff-only
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\scripts\provision-environment.ps1 -Environment production -StartAt e2e                 # Newman
+.\scripts\provision-environment.ps1 -Environment production -StartAt e2e -RunLoadTest    # Newman + smoke k6
+```
+
+Direto pelo `gh`, só se as credenciais já foram renovadas nesta sessão do Lab (`configure-environment.ps1 -Environment production -UseAwsAcademyDisposableProductionProfile`):
+
+```powershell
+gh workflow run e2e.yml --repo tiagomiele/oficina-os-service --ref main -f environment=production -f run_load_test=false
+Start-Sleep 10
+gh run watch (gh run list --repo tiagomiele/oficina-os-service --workflow e2e.yml --limit 1 --json databaseId -q '.[0].databaseId') --repo tiagomiele/oficina-os-service --exit-status
+```
+
+O run termina com `completed with 'success'`, e o resultado fica no artefato `newman-production-<run>`. No banco de produção (túnel na porta `25432`), a OS do teste aparece com o `correlation_id` `postman-saga-<runId>`.
+
+| Sintoma | Causa | O que fazer |
+|---|---|---|
+| `ExpiredToken` / `InvalidClientTokenId` no passo *Configure AWS Academy credentials* | credenciais do Lab vencidas no GitHub | copie o `[default]` e use o script acima |
+| `LoadBalancer sem hostname` | D&R ou O&P sem deploy na produção | rode o CD dos 2 serviços na `main` (seção 23) |
+| falha no `/pagamentos/{n}/simular` | `PAYMENT_PROVIDER=mercadopago` na produção | volte ao `fake` como na seção 20.6 |
+
 ## 18. New Relic
 
 Em https://one.newrelic.com, depois de ~10 min de tráfego (16 e 17 já feitos). Para abrir cada tela, use **Find what you need** (Ctrl+K). As consultas NRQL vão em **Query your data** (rodapé). Tudo aqui é só leitura.
@@ -1227,7 +1260,7 @@ aws rds describe-db-instances --region us-west-2 --query 'DBInstances[].DBInstan
 
 2. PRs `homolog → main` nos 6 repos, revisados; merge **um por vez**, na ordem Kubernetes → Database → Auth → OS → Diagnóstico e Reparo → Orçamento e Pagamento, rodando o script (`-Environment production -UseAwsAcademyDisposableProductionProfile`) depois dos bancos e depois do 1º Auth, como na homologação.
 3. Se quiser aprovação humana, em cada repo *Settings → Environments → production → Required reviewers* (o script não configura revisores).
-4. Use `Invoke-Workflow ... -Ref main` (e `deploy-production.yml` no Kubernetes). Em produção prefira health, Swagger e operações de leitura; finalize com o E2E `environment=production`.
+4. Use `Invoke-Workflow ... -Ref main` (e `deploy-production.yml` no Kubernetes). Em produção prefira health, Swagger e operações de leitura; finalize com o E2E `environment=production` (seção 17.1).
 
 Atenção ao orçamento do Lab: homolog e produção juntos dobram EKS, RDS e LoadBalancers.
 
