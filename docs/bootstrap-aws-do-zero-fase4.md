@@ -142,14 +142,37 @@ foreach ($Name in $Repositories) {
     gh repo clone "tiagomiele/$Name" $Path
     if ($LASTEXITCODE -ne 0) { throw "Falha ao clonar $Name" }
   }
-  if (@(git -C $Path status --porcelain).Count -gt 0) { throw "$Name tem alterações locais. Salve-as antes." }
+  $Pendentes = @(git -C $Path status --porcelain)
+  if ($Pendentes.Count -gt 0) {
+    Write-Host "$Name tem alterações locais:" -ForegroundColor Yellow
+    $Pendentes | ForEach-Object { "  $_" }
+    throw "Limpe $Name (veja 'Se aparecer alterações locais' abaixo) e rode o bloco de novo."
+  }
   git -C $Path fetch origin
+  if ($LASTEXITCODE -ne 0) { throw "Falha no fetch de $Name" }
   git -C $Path checkout homolog
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao trocar $Name para homolog" }
   git -C $Path pull --ff-only
   if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar $Name" }
   "{0,-40} {1}" -f $Name, (git -C $Path log -1 --format='%h %s')
 }
 ```
+
+O bloco pode ser rodado de novo a qualquer momento: ele clona o que falta e atualiza o resto na `homolog`.
+
+**Se aparecer alterações locais:** o bloco para antes do `pull`, para não perder trabalho, e lista os arquivos (`M` = alterado, `??` = novo). Entre no repositório mostrado e escolha **uma** das opções:
+
+```powershell
+Set-Location C:\fiap\fase4\<repo>   # troque <repo> pelo nome mostrado
+git status
+```
+
+- **Guardar as alterações:** `git stash push -u -m "antes do bootstrap"` (recupere depois com `git stash pop`).
+- **Descartar as alterações:** `git restore .` desfaz os arquivos `M`; `git clean -n -d` mostra os `??` que serão apagados e `git clean -f -d` apaga.
+
+Depois, `git status` deve mostrar `nothing to commit, working tree clean`; rode o bloco de novo.
+
+Caso comum: uma pasta com nome estranho, como `iap?dd-report/`. Provavelmente um comando recebeu `C:\fiap\bdd-report` com as barras interpretadas como escape (`\f` e `\b`). É só um relatório de BDD: descarte com `git clean -f -d`.
 
 ### 4.4 HCP Terraform: Team token exclusivo do projeto da Fase 4
 
@@ -438,6 +461,14 @@ Esperado: EKS sem mudanças destrutivas, add-ons saudáveis, Synthetic `oficina-
 
 ## 15. Validar a saúde técnica
 
+Namespaces e deployments (o CD acrescenta o ambiente ao nome do namespace; troque `homolog` por `production` na produção):
+
+| Serviço | Namespace | Deployment / Service |
+|---|---|---|
+| OS Service | `oficina-homolog` | `oficina-app` |
+| Diagnóstico e Reparo | `oficina-diagnostico-reparo-homolog` | `oficina-diagnostico-reparo` |
+| Orçamento e Pagamento | `oficina-orcamento-pagamento-homolog` | `oficina-orcamento-pagamento` |
+
 ```powershell
 . C:\fiap-secrets\oficina-homolog\environment-context.ps1
 function Get-LbUrl($svc, $ns) { 'http://' + (kubectl get svc $svc -n $ns -o jsonpath='{.status.loadBalancer.ingress[0].hostname}') }
@@ -644,6 +675,64 @@ kubectl logs -n oficina-homolog deploy/oficina-app --tail=200 | Select-String $C
 
 Esperado: filas e DLQs com `0` mensagens depois do fluxo; o item da OS no DynamoDB; logs com o `correlationId`.
 
+**Filas em `0` é o esperado.** O consumidor apaga a mensagem assim que a processa, e o SQS não guarda histórico; o conteúdo só fica na DLQ (14 dias), depois de 5 falhas. O que passou pela Saga fica registrado em:
+
+| Onde | O que mostra |
+|---|---|
+| Banco do OS, `mensagens_processadas` e `historico_status_ordem_servico` | eventos recebidos pelo OS e cada mudança de status, com `correlation_id` |
+| Banco do Orçamento e Pagamento, `mensagens_processadas` | comandos recebidos |
+| DynamoDB `oficina-homolog-execucoes` | `etapa`, `correlationId` e os últimos 20 `messageId` (`mensagensProcessadas`) |
+| New Relic → Logs | cada mensagem publicada e consumida, buscando pelo `correlationId` |
+
+Os bancos PostgreSQL são privados: abra-os no DBeaver pelo túnel do [Database Infra, seção 6.3](https://github.com/tiagomiele/oficina-database-infra#63-ver-os-dados-do-rds-dbeaver-ou-psql), que também traz as portas, a senha e os erros comuns.
+
+**`correlation_id`:** é o mesmo em todas as mensagens da mesma OS, enquanto o `message_id` muda a cada mensagem. Ele vem do `X-Request-Id` da abertura da OS: `hml-<número>` nestes testes manuais, `postman-saga-<runId>` no E2E da seção 17 (`runId` = horário do run em milissegundos) e um UUID quando a requisição chega sem o cabeçalho. O prefixo só indica a origem do teste.
+
+**No console da AWS:** selecione antes a região **Estados Unidos (Oregon) us-west-2**, no canto superior direito. Em outra região (por exemplo, Norte da Virgínia) as filas e a tabela não aparecem.
+- **SQS:** **Simple Queue Service** → **Filas** → busque `oficina-homolog-`. As colunas **Mensagens disponíveis** e **Mensagens em andamento** ficam nessa lista, que só se atualiza no **⟳**. Dentro da fila, a aba **Monitoramento** mostra os gráficos (atraso de 1 a 5 min).
+- **Conteúdo de uma DLQ:** fila `-dlq` → botão **Enviar e receber mensagens** (no topo da página da fila) → **Sondar mensagens** → ID → aba **Corpo**. Não sonde as filas principais com o serviço no ar: cada leitura conta como tentativa, e na 5ª a mensagem vai para a DLQ.
+- **DynamoDB:** **Explorar itens** → `oficina-homolog-execucoes` → **Varrer** → **Filtros** (`numeroOs` = número da OS) → **Executar**.
+
+### 16.6 Ver uma mensagem parada na fila (opcional)
+
+Para ver a fila ser alimentada, pare o consumidor do Diagnóstico e Reparo, abra algumas OS e religue-o. Use a mesma janela das seções 15 a 16.2 (`$OS`, `$DR`, `$HF`, `$cli`, `$Placa`).
+
+**1. Pare o consumidor.** Com 0 réplicas o HPA não o religa sozinho.
+
+```powershell
+$NsDR = 'oficina-diagnostico-reparo-homolog'
+kubectl scale deploy/oficina-diagnostico-reparo -n $NsDR --replicas=0
+if ($LASTEXITCODE -ne 0) { throw "Deployment não encontrado em $NsDR. Confira: kubectl get deploy -A" }
+do { Start-Sleep 5; $p = kubectl get pods -n $NsDR -l app.kubernetes.io/name=oficina-diagnostico-reparo -o name } while ($p)   # espera o pod sair
+```
+
+**2. Abra 5 OS, uma a cada 10 s.** Enquanto o bloco roda, clique em **⟳** na lista de filas: **Mensagens disponíveis** da `oficina-homolog-diagnostico-reparo-comandos` sobe até 5.
+
+```powershell
+$Fila = @()
+1..5 | ForEach-Object {
+  $c = "hml-fila-$(Get-Random)"
+  $o = Invoke-RestMethod -Method Post "$OS/ordens-servico" -Headers ($HF + @{ 'X-Request-Id'=$c }) -ContentType $CT -Body (J @{ idCliente=$cli.idCliente; placa=$Placa; descricaoProblema="Teste fila $_" })
+  $Fila += $o.numero; "{0}  {1}" -f $o.numero, $c
+  Start-Sleep 10
+}
+$q = aws sqs get-queue-url --region us-west-2 --queue-name oficina-homolog-diagnostico-reparo-comandos --query QueueUrl --output text
+aws sqs get-queue-attributes --region us-west-2 --queue-url $q --attribute-names ApproximateNumberOfMessages   # 5
+```
+
+Se quiser ver o conteúdo, sonde a fila **uma vez** no console (**Enviar e receber mensagens** → **Sondar mensagens**): aparece `tipo = INICIAR_DIAGNOSTICO`. A mensagem lida fica cerca de 60 s em **Mensagens em andamento** e depois volta.
+
+**3. Religue e veja a fila esvaziar** (em até 1 min depois do pod pronto):
+
+```powershell
+kubectl scale deploy/oficina-diagnostico-reparo -n $NsDR --replicas=1
+kubectl rollout status deploy/oficina-diagnostico-reparo -n $NsDR --timeout=300s
+Start-Sleep 30
+$Fila | ForEach-Object { "{0}  {1}" -f $_, (Invoke-RestMethod "$DR/execucoes/$_" -Headers $HF).etapa }   # NA_FILA_DIAGNOSTICO
+```
+
+**Não esqueça o passo 3:** com o consumidor parado, toda OS nova fica presa na fila. Essas 5 OS ficam abertas e não atrapalham os próximos passos.
+
 ## 17. E2E automatizado (Newman)
 
 O workflow aquece o login por CPF e o Authorizer antes do Newman, para o cold start das Lambdas não estourar o timeout do API Gateway.
@@ -656,7 +745,7 @@ Start-Sleep 10
 gh run watch (gh run list --repo tiagomiele/oficina-os-service --workflow e2e.yml --limit 1 --json databaseId -q '.[0].databaseId') --repo tiagomiele/oficina-os-service --exit-status
 ```
 
-A coleção faz o health dos 3 serviços, a Saga até `PAGA`/`ENTREGUE` (pagamento fake), a segurança do API Gateway e confere o mesmo `correlationId` nas etapas. As URLs do D&R e do O&P vêm dos LoadBalancers via `kubectl`. Depois, opcionalmente, repita com `-f run_load_test=true` (smoke k6). Resultado no artefato `newman-homolog-<run>`.
+A coleção faz o health dos 3 serviços, a Saga até `PAGA`/`ENTREGUE` (pagamento fake), a segurança do API Gateway e confere o mesmo `correlationId` nas etapas (`postman-saga-<runId>`). As URLs do D&R e do O&P vêm dos LoadBalancers via `kubectl`. Depois, opcionalmente, repita com `-f run_load_test=true` (smoke k6). Resultado no artefato `newman-homolog-<run>`.
 
 O Newman só roda com `PAYMENT_PROVIDER=fake`. A validação com o Mercado Pago real vem depois, na seção 20.
 
@@ -1182,6 +1271,11 @@ Não avance se:
 | OS Service `403` e Diagnóstico e Reparo `401` em chamadas com `$HF` que antes funcionavam | token do funcionário expirou (padrão 60 min) | refaça o login do 16.1 (já pede `validadeMinutos=240`) e recomece o cenário com uma OS nova |
 | `$GW/...` responde `401` em chamadas que antes funcionavam | token do cliente (`$HC`) expirou (`jwt_ttl_seconds = 900`, 15 min) | refaça o login por CPF (`$tc = Invoke-RestMethod -Method Post "$GW/auth/cpf" ...` e `$HC = ...`) e repita a chamada |
 | New Relic sem dados | janela de ingestão | gerar tráfego e esperar 5–15 min |
+| Console da AWS não mostra as filas SQS nem a tabela DynamoDB | região errada no console | selecione **Estados Unidos (Oregon) us-west-2** no canto superior direito |
+| Fila sempre com **Mensagens disponíveis** = `0` | comportamento normal: o consumidor processa e apaga a mensagem em segundos | 16.5 (onde ver o histórico) e 16.6 (cenário com a mensagem parada) |
+| `namespaces "oficina-diagnostico-reparo" not found` | namespace sem o sufixo do ambiente | use `oficina-diagnostico-reparo-homolog` (tabela da seção 15) |
+| `namespaces "oficina-production" not found` | `kubectl` apontando para o cluster de homologação | `aws eks update-kubeconfig --region us-west-2 --name oficina-production` |
+| `pg-tunnel` em `Pending`, DBeaver com senha recusada ou `Connection refused` | nodes cheios, senha antiga ou conexão de outro ambiente | [Database Infra, seção 6.3](https://github.com/tiagomiele/oficina-database-infra#63-ver-os-dados-do-rds-dbeaver-ou-psql) |
 
 Tempos típicos: EKS 20–40 min; cada RDS 10–25 min; DynamoDB 2–5 min; Auth 5–15 min; cada CD 8–15 min; Kubernetes (2º run) 5–20 min. Total: 2h30 a 3h30.
 
