@@ -142,14 +142,37 @@ foreach ($Name in $Repositories) {
     gh repo clone "tiagomiele/$Name" $Path
     if ($LASTEXITCODE -ne 0) { throw "Falha ao clonar $Name" }
   }
-  if (@(git -C $Path status --porcelain).Count -gt 0) { throw "$Name tem alterações locais. Salve-as antes." }
+  $Pendentes = @(git -C $Path status --porcelain)
+  if ($Pendentes.Count -gt 0) {
+    Write-Host "$Name tem alterações locais:" -ForegroundColor Yellow
+    $Pendentes | ForEach-Object { "  $_" }
+    throw "Limpe $Name (veja 'Se aparecer alterações locais' abaixo) e rode o bloco de novo."
+  }
   git -C $Path fetch origin
+  if ($LASTEXITCODE -ne 0) { throw "Falha no fetch de $Name" }
   git -C $Path checkout homolog
+  if ($LASTEXITCODE -ne 0) { throw "Falha ao trocar $Name para homolog" }
   git -C $Path pull --ff-only
   if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar $Name" }
   "{0,-40} {1}" -f $Name, (git -C $Path log -1 --format='%h %s')
 }
 ```
+
+O bloco pode ser rodado de novo a qualquer momento: ele clona o que falta e atualiza o resto na `homolog`.
+
+**Se aparecer alterações locais:** o bloco para antes do `pull`, para não perder trabalho, e lista os arquivos (`M` = alterado, `??` = novo). Entre no repositório mostrado e escolha **uma** das opções:
+
+```powershell
+Set-Location C:\fiap\fase4\<repo>   # troque <repo> pelo nome mostrado
+git status
+```
+
+- **Guardar as alterações:** `git stash push -u -m "antes do bootstrap"` (recupere depois com `git stash pop`).
+- **Descartar as alterações:** `git restore .` desfaz os arquivos `M`; `git clean -n -d` mostra os `??` que serão apagados e `git clean -f -d` apaga.
+
+Depois, `git status` deve mostrar `nothing to commit, working tree clean`; rode o bloco de novo.
+
+Caso comum: uma pasta com nome estranho, como `iap?dd-report/`. Provavelmente um comando recebeu `C:\fiap\bdd-report` com as barras interpretadas como escape (`\f` e `\b`). É só um relatório de BDD: descarte com `git clean -f -d`.
 
 ### 4.4 HCP Terraform: Team token exclusivo do projeto da Fase 4
 
