@@ -38,6 +38,10 @@ jobs:
         shell: pwsh
         run: ./scripts/tests/destroy-environment.Tests.ps1
 
+      - name: Validate PowerShell provision automation
+        shell: pwsh
+        run: ./scripts/tests/provision-environment.Tests.ps1
+
       - name: Test Backend output synchronization
         run: python3 -m unittest tests/test_sync_backend_outputs.py
 

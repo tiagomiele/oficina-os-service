@@ -4,6 +4,8 @@ Este roteiro sobe a Fase 4 inteira num AWS Academy Learner Lab vazio, desde as f
 
 Todos os comandos são para **Windows PowerShell 5.1**. Rode os blocos na ordem.
 
+> **Atalho:** as seções 7.2 a 15 rodam de uma vez com `scripts/provision-environment.ps1`. Veja o [Bootstrap de uma única vez](../README-bootstrap-unica-vez.md).
+
 ## 1. Objetivo e ordem obrigatória
 
 ```text
@@ -1017,6 +1019,8 @@ Se depois da recriação o `explicit deny` continuar, o bloqueio é permanente n
 - A sessão dura cerca de 4 h. Antes de um passo longo (EKS, RDS), confira o tempo restante no Lab; se faltar pouco, renove antes (21.1).
 
 ## 22. Resumo operacional mínimo (reconstrução com tudo já preparado)
+
+Os passos 2 a 11 abaixo são executados de uma vez pelo `.\scripts\provision-environment.ps1 -Environment homolog` ([Bootstrap de uma única vez](../README-bootstrap-unica-vez.md)).
 
 ```text
 1.  Start Lab e copiar [default]
