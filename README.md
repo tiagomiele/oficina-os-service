@@ -6,6 +6,8 @@ Este repositório é o ponto de entrada da Oficina Fase 4: o que a solução faz
 
 **Atendimento ao enunciado da Fase 4, item a item:** [README-requisitos-obrigatorios-fase4.md](README-requisitos-obrigatorios-fase4.md).
 
+**Índice das documentações e evidências da Fase 4:** [README-Indice-Evidencia-fase4.md](README-Indice-Evidencia-fase4.md).
+
 ## 1. O que a solução faz
 
 Uma oficina mecânica controla o atendimento de ponta a ponta: cadastro de cliente e veículo, abertura da Ordem de Serviço (OS), diagnóstico, orçamento, aprovação pelo cliente, reparo com baixa de peças, pagamento (Mercado Pago) e entrega.
