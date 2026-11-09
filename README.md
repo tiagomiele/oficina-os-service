@@ -158,6 +158,16 @@ A suíte inclui testes unitários, integração, persistência, segurança, cont
 
 - [Collection Postman integrada](tests/postman/oficina-weeks4-5.postman_collection.json)
 - [Ambiente Postman de exemplo](tests/postman/oficina-homolog.postman_environment.example.json)
+
+### Evidência de cobertura de testes
+
+O build falha se a cobertura ficar abaixo de 80% (JaCoCo, `<minimum>0.80</minimum>` no `pom.xml`). Último CI verde em `homolog` (02/11/2026):
+
+| Linhas | Instruções | Branches | Relatório |
+|---|---|---|---|
+| 84,4% | 83,3% | 71,3% | artefato `jacoco-report` do [run 41484365373](https://github.com/tiagomiele/oficina-os-service/actions/runs/41484365373) |
+
+Quality Gate do SonarCloud: [painel do projeto](https://sonarcloud.io/summary/overall?id=tiagomiele_oficina-os-service&branch=homolog). Para gerar o relatório local: `./mvnw verify` e abra `target/site/jacoco/index.html`.
 - [Teste de carga smoke](tests/k6/smoke-load.js)
 
 ### Configuração

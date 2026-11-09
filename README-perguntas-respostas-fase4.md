@@ -65,7 +65,7 @@ Resposta: Sim, no OS `README.md` §7 e em `README-requisitos-obrigatorios-fase4.
 ## Testes e Qualidade
 
 **14. Há testes unitários em todos os microsserviços?**
-Resposta: Sim, com JUnit 5 e Mockito, em `src/test` de cada repositório. São 44 classes de teste no OS, 13 no O&P, 10 no D&R e 20 no Auth.
+Resposta: Sim, com JUnit 5 e Mockito, em `src/test` de cada repositório. São 41 classes de teste no OS, 13 no O&P, 10 no D&R e 18 no Auth.
 
 **15. Há pelo menos um fluxo completo testado com BDD?**
 Resposta: Sim. São 5 cenários Cucumber, o fluxo feliz e 4 compensações, rodando com os 3 serviços reais (OS `bdd/src/test/resources/features/saga.feature` e `.github/workflows/bdd.yml`). Último run em `main`: https://github.com/tiagomiele/oficina-os-service/actions/runs/42539981730.
