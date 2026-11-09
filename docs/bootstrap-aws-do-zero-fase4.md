@@ -749,6 +749,48 @@ A coleção faz o health dos 3 serviços, a Saga até `PAGA`/`ENTREGUE` (pagamen
 
 O Newman só roda com `PAYMENT_PROVIDER=fake`. A validação com o Mercado Pago real vem depois, na seção 20.
 
+**17.1 E2E em produção**
+
+Use depois da seção 23, com a produção no ar. Antes, confira três coisas:
+- **Ambiente no ar:** os nodes e os 3 serviços precisam estar rodando:
+
+  ```powershell
+  aws eks update-kubeconfig --region us-west-2 --name oficina-production
+  kubectl get nodes                                   # 2 nodes Ready; "No resources found" = seção 21.2
+  kubectl get pods -A | Select-String oficina         # todos 1/1 Running, nenhum Pending
+  $u = gh variable get BACKEND_BASE_URL --repo tiagomiele/oficina-os-service --env production
+  Invoke-RestMethod "$u/actuator/health/readiness"    # status UP
+  ```
+- **Lab ativo e `[default]` copiado:** o workflow usa as credenciais AWS gravadas no Environment `production` do GitHub.
+- **Pagamento no `fake`:** `gh variable list --repo tiagomiele/oficina-orcamento-pagamento-service --env production` não deve listar `PAYMENT_PROVIDER`, ou ela deve estar igual a `fake`.
+
+Pelo script, que renova as credenciais no GitHub e roda só o E2E (digite `production` na confirmação):
+
+```powershell
+Set-Location C:\fiap\fase4\oficina-os-service
+git pull --ff-only
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\scripts\provision-environment.ps1 -Environment production -StartAt e2e                 # Newman
+.\scripts\provision-environment.ps1 -Environment production -StartAt e2e -RunLoadTest    # Newman + smoke k6
+```
+
+Direto pelo `gh`, só se as credenciais já foram renovadas nesta sessão do Lab (`configure-environment.ps1 -Environment production -UseAwsAcademyDisposableProductionProfile`):
+
+```powershell
+gh workflow run e2e.yml --repo tiagomiele/oficina-os-service --ref main -f environment=production -f run_load_test=false
+Start-Sleep 10
+gh run watch (gh run list --repo tiagomiele/oficina-os-service --workflow e2e.yml --limit 1 --json databaseId -q '.[0].databaseId') --repo tiagomiele/oficina-os-service --exit-status
+```
+
+O run termina com `completed with 'success'`, e o resultado fica no artefato `newman-production-<run>`. No banco de produção (túnel na porta `25432`), a OS do teste aparece com o `correlation_id` `postman-saga-<runId>`.
+
+| Sintoma | Causa | O que fazer |
+|---|---|---|
+| `ExpiredToken` / `InvalidClientTokenId` no passo *Configure AWS Academy credentials* | credenciais do Lab vencidas no GitHub | copie o `[default]` e use o script acima |
+| `LoadBalancer sem hostname` | D&R ou O&P sem deploy na produção | rode o CD dos 2 serviços na `main` (seção 23) |
+| falha no `/pagamentos/{n}/simular` | `PAYMENT_PROVIDER=mercadopago` na produção | volte ao `fake` como na seção 20.6 |
+| `socket hang up` na 1ª requisição (*Health readiness e X-Request-Id*); no PowerShell, `A conexão subjacente estava fechada` | o cluster ficou sem nodes (o Lab parou as EC2) e os pods estão `Pending`; o LoadBalancer fecha a conexão por não ter destino saudável | interrompa o script (`Ctrl+C`), siga a seção 21.2 com `$amb = 'production'` e rode o E2E de novo depois do health `UP` |
+
 ## 18. New Relic
 
 Em https://one.newrelic.com, depois de ~10 min de tráfego (16 e 17 já feitos). Para abrir cada tela, use **Find what you need** (Ctrl+K). As consultas NRQL vão em **Query your data** (rodapé). Tudo aqui é só leitura.
@@ -1061,10 +1103,14 @@ Confira a linha `AWS validada: conta ...`: tem que ser a **mesma conta** de ante
 
 ### 21.2 Conferir se os nós do EKS voltaram
 
-Quando a sessão acaba, o Lab para as instâncias EC2. Na volta, os nós podem não entrar no cluster.
+Quando a sessão acaba, o Lab para as instâncias EC2. Na volta, os nós podem não entrar no cluster. Sintomas: pods `Pending` há muito tempo, LoadBalancer que fecha a conexão (`socket hang up` no Newman, `A conexão subjacente estava fechada` no PowerShell) e o `pg-tunnel` que não fica pronto.
+
+Os comandos abaixo valem para os 2 ambientes; escolha na 1ª linha:
 
 ```powershell
-aws eks update-kubeconfig --region us-west-2 --name oficina-homolog
+$amb = 'homolog'                     # ou 'production'
+$c   = "oficina-$amb"
+aws eks update-kubeconfig --region us-west-2 --name $c
 kubectl get nodes
 ```
 
@@ -1077,8 +1123,8 @@ kubectl get nodes
 Diagnóstico (só leitura):
 
 ```powershell
-aws eks describe-nodegroup --region us-west-2 --cluster-name oficina-homolog --nodegroup-name oficina-homolog-nodes --query 'nodegroup.[status,scalingConfig,health.issues]' --output json
-aws ec2 describe-instances --region us-west-2 --filters Name=tag:eks:cluster-name,Values=oficina-homolog Name=instance-state-name,Values=pending,running,stopped --query 'Reservations[].Instances[].[InstanceId,State.Name,LaunchTime,MetadataOptions.HttpPutResponseHopLimit]' --output table
+aws eks describe-nodegroup --region us-west-2 --cluster-name $c --nodegroup-name "$c-nodes" --query 'nodegroup.[status,scalingConfig,health.issues]' --output json
+aws ec2 describe-instances --region us-west-2 --filters Name=tag:eks:cluster-name,Values=$c Name=instance-state-name,Values=pending,running,stopped --query 'Reservations[].Instances[].[InstanceId,State.Name,LaunchTime,MetadataOptions.HttpPutResponseHopLimit]' --output table
 ```
 
 - instâncias `stopped`: ligue-as com `aws ec2 start-instances --region us-west-2 --instance-ids <id1> <id2>` e espere 5 min;
@@ -1091,7 +1137,7 @@ aws ec2 get-console-output --region us-west-2 --instance-id <id> --latest --outp
 Se aparecer `ec2:DescribeInstances with an explicit deny in a service control policy` e `Failed to start nodeadm-config.service`, o Academy bloqueou o bootstrap do nó durante o restart do Lab (acontece logo depois do Start Lab e é temporário). O `nodeadm` não tenta de novo sozinho; **recrie os nós**:
 
 ```powershell
-$ids = aws ec2 describe-instances --region us-west-2 --filters Name=tag:eks:cluster-name,Values=oficina-homolog Name=instance-state-name,Values=running,stopped --query 'Reservations[].Instances[].InstanceId' --output text
+$ids = aws ec2 describe-instances --region us-west-2 --filters Name=tag:eks:cluster-name,Values=$c Name=instance-state-name,Values=running,stopped --query 'Reservations[].Instances[].InstanceId' --output text
 aws ec2 terminate-instances --region us-west-2 --instance-ids $ids.Split() | Out-Null
 Start-Sleep 360
 kubectl get nodes      # esperado: 2 nós Ready
@@ -1227,7 +1273,7 @@ aws rds describe-db-instances --region us-west-2 --query 'DBInstances[].DBInstan
 
 2. PRs `homolog → main` nos 6 repos, revisados; merge **um por vez**, na ordem Kubernetes → Database → Auth → OS → Diagnóstico e Reparo → Orçamento e Pagamento, rodando o script (`-Environment production -UseAwsAcademyDisposableProductionProfile`) depois dos bancos e depois do 1º Auth, como na homologação.
 3. Se quiser aprovação humana, em cada repo *Settings → Environments → production → Required reviewers* (o script não configura revisores).
-4. Use `Invoke-Workflow ... -Ref main` (e `deploy-production.yml` no Kubernetes). Em produção prefira health, Swagger e operações de leitura; finalize com o E2E `environment=production`.
+4. Use `Invoke-Workflow ... -Ref main` (e `deploy-production.yml` no Kubernetes). Em produção prefira health, Swagger e operações de leitura; finalize com o E2E `environment=production` (seção 17.1).
 
 Atenção ao orçamento do Lab: homolog e produção juntos dobram EKS, RDS e LoadBalancers.
 
@@ -1253,6 +1299,7 @@ Não avance se:
 | `gh api --method POST .../rulesets` → `HTTP 422` | regra já existe e o 5.1 leu o nome com acento errado | rodar com `-SkipBranchProtection` até o merge do [#13](https://github.com/tiagomiele/oficina-os-service/pull/13); depois, sem o parâmetro |
 | `ExpiredToken` / `voc-cancel-cred` | Lab expirou | seção 21 |
 | `kubectl get nodes` → `No resources found` depois do Start Lab | nós parados ou bootstrap bloqueado pelo Academy (`explicit deny` no console da instância) | seção 21.2: recriar os nós |
+| Pods `Pending` há muito tempo, `socket hang up` no E2E ou `A conexão subjacente estava fechada` no health | cluster sem nodes | `kubectl get nodes`; se vazio, seção 21.2 com o `$amb` do ambiente |
 | `TF_APPLY_ENABLED`/`ENABLE_TERRAFORM_APPLY` diferente de `true` | Environment incompleto | rodar o script e conferir o Environment `homolog` |
 | `Deploy bloqueado: DEPLOY_ENABLED` | script não rodou depois dos bancos | seção 9 e repetir o CD |
 | `Configure no GitHub Environment homolog: ...` | variável/secret faltando | rodar o script; se for `REPO_SYNC_TOKEN`, refazer 4.5 |
